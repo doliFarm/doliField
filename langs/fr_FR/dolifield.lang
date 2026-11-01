@@ -1,0 +1,61 @@
+# Copyright (C) 2026 Luigi Grillo - doliFarm.com <info@dolifarm.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+#
+# Generic
+#
+ModuleDoliFieldName = doliField
+ModuleDoliFieldDesc = Données de terrain de la suite doliFarm : capteurs, météo, satellite et caméras, liés aux parcelles, bâtiments et silos (en développement)
+Permission50003001 = Consulter les données de terrain
+
+#
+# Admin page
+#
+DoliFieldSetup = Configuration de doliField
+Settings = Paramètres
+DoliFieldSetupPage = Les options arriveront avec les capteurs, le service météo et les données satellitaires.
+About = À propos
+DoliFieldAbout = À propos de doliField
+
+#
+# Area page
+#
+DoliFieldArea = Données de terrain
+DoliFieldInDevelopment = Module en développement
+DoliFieldInDevelopmentHelp = Cette page affiche des valeurs d'exemple : aucun capteur, station météo ou service satellitaire n'est encore connecté.
+DoliFieldDemoData = Données d'exemple
+DoliFieldDemoLiveTitle = État des capteurs
+DoliFieldDemoHistoryTitle = Relevés de la journée
+DoliFieldDemoLastTitle = Dernières données reçues du terrain
+DoliFieldDemoTime = Heure de réception
+DoliFieldDemoNode = Nœud
+DoliFieldDemoSoilMoisture = Humidité du sol
+DoliFieldDemoGreenhouseTemp = Température de la serre
+DoliFieldDemoSiloLevel = Niveau du silo
+DoliFieldDemoStateOk = Normal
+DoliFieldDemoStateWarn = Seuil critique
+DoliFieldDemoStateFilling = En remplissage
+
+#
+# Menus
+#
+WaterManagement = Eau
+ProductionManagement = Capteurs de production
+SoilManagement = Sol
+SolarEnergy = Énergie
+Satellite = Satellite
+Weather = Météo
+VideoCam = Caméras

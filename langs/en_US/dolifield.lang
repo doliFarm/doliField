@@ -1,51 +1,60 @@
-# Translation file
+# Copyright (C) 2026 Luigi Grillo - doliFarm.com <info@dolifarm.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #
 # Generic
 #
-
-# Module label 'ModuleDoliFieldName'
-ModuleDoliFieldName = DoliField
-# Module description 'ModuleDoliFieldDesc'
-ModuleDoliFieldDesc = DoliField description
+ModuleDoliFieldName = doliField
+ModuleDoliFieldDesc = Field data of the doliFarm suite: sensors, weather, satellite and cameras, linked to plots, buildings and silos (in development)
+Permission50003001 = Read the field data
 
 #
 # Admin page
 #
-DoliFieldSetup = DoliField setup
+DoliFieldSetup = doliField setup
 Settings = Settings
-DoliFieldSetupPage = DoliField setup page
-NewSection=New section
-DOLIFIELD_MYPARAM1 = My param 1
-DOLIFIELD_MYPARAM1Tooltip = My param 1 tooltip
-DOLIFIELD_MYPARAM2=My param 2
-DOLIFIELD_MYPARAM2Tooltip=My param 2 tooltip
-
-
-#
-# About page
-#
+DoliFieldSetupPage = The options will come with the sensors, the weather service and the satellite data.
 About = About
-DoliFieldAbout = About DoliField
-DoliFieldAboutPage = DoliField about page
+DoliFieldAbout = About doliField
 
 #
-# Sample page
+# Area page
 #
-DoliFieldArea = Sensoristica di campo
-MyPageName = My page name
+DoliFieldArea = Field data
+DoliFieldInDevelopment = Module in development
+DoliFieldInDevelopmentHelp = This page shows example values: no sensor, weather station or satellite service is connected yet.
+DoliFieldDemoData = Example data
+DoliFieldDemoLiveTitle = Sensors now
+DoliFieldDemoHistoryTitle = Readings of the day
+DoliFieldDemoLastTitle = Last data received from the field
+DoliFieldDemoTime = Time received
+DoliFieldDemoNode = Node
+DoliFieldDemoSoilMoisture = Soil moisture
+DoliFieldDemoGreenhouseTemp = Greenhouse temperature
+DoliFieldDemoSiloLevel = Silo level
+DoliFieldDemoStateOk = Normal
+DoliFieldDemoStateWarn = Critical threshold
+DoliFieldDemoStateFilling = Filling
 
 #
-# Sample widget
+# Menus
 #
-MyWidget = My widget
-MyWidgetDescription = My widget description
-
-
-Wheater = Meteo
+WaterManagement = Water
+ProductionManagement = Production sensors
+SoilManagement = Soil
+SolarEnergy = Energy
 Satellite = Satellite
-SolaEnergy = Gestione Energia
-SoliManagement = Gestione Suolo
-WaterManagement = Gestione Acqua
-ProductionManagement = Sensori di Produzione
-VideoCam = Video Camere
+Weather = Weather
+VideoCam = Cameras

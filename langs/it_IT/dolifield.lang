@@ -1,0 +1,61 @@
+# Copyright (C) 2026 Luigi Grillo - doliFarm.com <info@dolifarm.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+#
+# Generic
+#
+ModuleDoliFieldName = doliField
+ModuleDoliFieldDesc = Dati di campo della suite doliFarm: sensori, meteo, satellite e videocamere, collegati ad appezzamenti, fabbricati e silos (in sviluppo)
+Permission50003001 = Consultare i dati di campo
+
+#
+# Admin page
+#
+DoliFieldSetup = Configurazione di doliField
+Settings = Impostazioni
+DoliFieldSetupPage = Le opzioni arriveranno con i sensori, il servizio meteo e i dati satellitari.
+About = Informazioni
+DoliFieldAbout = Informazioni su doliField
+
+#
+# Area page
+#
+DoliFieldArea = Dati di campo
+DoliFieldInDevelopment = Modulo in sviluppo
+DoliFieldInDevelopmentHelp = Questa pagina mostra valori di esempio: nessun sensore, stazione meteo o servizio satellitare è ancora collegato.
+DoliFieldDemoData = Dati di esempio
+DoliFieldDemoLiveTitle = Stato dei sensori
+DoliFieldDemoHistoryTitle = Rilevazioni della giornata
+DoliFieldDemoLastTitle = Ultimi dati ricevuti dal campo
+DoliFieldDemoTime = Ora di ricezione
+DoliFieldDemoNode = Nodo
+DoliFieldDemoSoilMoisture = Umidità del terreno
+DoliFieldDemoGreenhouseTemp = Temperatura della serra
+DoliFieldDemoSiloLevel = Livello del silo
+DoliFieldDemoStateOk = Regolare
+DoliFieldDemoStateWarn = Soglia critica
+DoliFieldDemoStateFilling = In riempimento
+
+#
+# Menus
+#
+WaterManagement = Gestione acqua
+ProductionManagement = Sensori di produzione
+SoilManagement = Gestione suolo
+SolarEnergy = Gestione energia
+Satellite = Satellite
+Weather = Meteo
+VideoCam = Videocamere
