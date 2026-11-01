@@ -1,0 +1,51 @@
+# Generated binaries
+/build/*.zip
+/bin/*.zip
+/bin
+# Doxygen generated documentation
+/build/doxygen/doxygen_warnings.log
+/doc/code/doxygen
+# Composer managed dependencies
+/vendor
+/dev/bin
+# PHPdocumentor generated files
+/build/phpdoc
+/doc/code/phpdoc
+# Sphinx generated files
+/doc/user/build
+/.settings/
+/.buildpath
+/.project
+# Other
+*.back
+/.editorconfig
+/.gitattributes
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Log e file temporanei
+*.log
+*.tmp
+*.cache
+
+# Backup
+*.bak
+*.old
+*~
+
+# File temporanei
+/tmp/
+/cache/
+
+# Configurazioni locali
+.env
+.env.local
+
+# Dipendenze generate
+/vendor/

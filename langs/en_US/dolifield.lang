@@ -1,0 +1,51 @@
+# Translation file
+
+#
+# Generic
+#
+
+# Module label 'ModuleDoliFieldName'
+ModuleDoliFieldName = DoliField
+# Module description 'ModuleDoliFieldDesc'
+ModuleDoliFieldDesc = DoliField description
+
+#
+# Admin page
+#
+DoliFieldSetup = DoliField setup
+Settings = Settings
+DoliFieldSetupPage = DoliField setup page
+NewSection=New section
+DOLIFIELD_MYPARAM1 = My param 1
+DOLIFIELD_MYPARAM1Tooltip = My param 1 tooltip
+DOLIFIELD_MYPARAM2=My param 2
+DOLIFIELD_MYPARAM2Tooltip=My param 2 tooltip
+
+
+#
+# About page
+#
+About = About
+DoliFieldAbout = About DoliField
+DoliFieldAboutPage = DoliField about page
+
+#
+# Sample page
+#
+DoliFieldArea = Sensoristica di campo
+MyPageName = My page name
+
+#
+# Sample widget
+#
+MyWidget = My widget
+MyWidgetDescription = My widget description
+
+
+Wheater = Meteo
+Satellite = Satellite
+SolaEnergy = Gestione Energia
+SoliManagement = Gestione Suolo
+WaterManagement = Gestione Acqua
+ProductionManagement = Sensori di Produzione
+VideoCam = Video Camere
