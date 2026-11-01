@@ -13,22 +13,22 @@ Modulo esterno Dolibarr per i dati di campo: sensori, meteo, satellite e videoca
 
 ## Ambienti e compatibilità
 
-| | Sviluppo (Docker sulla WS) | WS (Windows, PHP 7.4) | VPS (Linux, Docker, test) |
-|---|---|---|---|
-| URL | http://localhost:8089 | http://localhost:8088/dolibarr | — |
-| Dolibarr | 24.0.2 | 24.0.2 (stessi sorgenti) | 24.0.2 |
-| PHP | 8.4 | 7.4.26 | 8.4 / 8.5 |
-| Database | MySQL 8.4 | MariaDB 10.6.5 | MySQL 8.x |
+| | Sviluppo (Docker sulla WS) | VPS (Linux, Docker, test) |
+|---|---|---|
+| URL | http://localhost:8089 | — |
+| Dolibarr | 24.0.2 | 24.0.2 |
+| PHP | 8.4 | 8.4 / 8.5 |
+| Database | MySQL 8.4 | MySQL 8.x |
 
-- **Piattaforma di sviluppo: l'istanza Docker** in `C:\dolibarr\docker-php8` (vedi il README lì). Monta `C:\dolibarr\www\dolibarr\htdocs` della WS, quindi il codice è lo stesso; database e documenti sono suoi. La WS sulla porta 8088 resta per provare PHP 7.4.
+- **Unica piattaforma di sviluppo e di prova: l'istanza Docker** in `C:\dolibarr\docker-php8` (vedi il README lì). Monta `C:\dolibarr\www\dolibarr\htdocs`; database e documenti sono suoi. L'installazione DoliWamp della WS (porta 8088, PHP 7.4, MariaDB) **non si usa più** (deciso il 01/11/2026): niente prove, reinizializzazioni o controlli lì.
+
 - Requisito minimo: **Dolibarr 23**, come doliFarm.
-- Il codice deve funzionare **da PHP 7.4 a PHP 8.5**:
-  - niente sintassi solo PHP 8: `match`, `?->`, argomenti nominati, union types, enum, `readonly`, promozione dei parametri nel costruttore, `str_contains()`/`str_starts_with()`;
+- PHP **8.2 o successivo** (`$this->phpmin = array(8, 2)`), provato su 8.4; la VPS può passare a 8.5:
+  - la sintassi di PHP 8 è ammessa (`match`, `?->`, `str_contains()`, ...); non serve più la compatibilità con PHP 7;
   - niente deprecazioni PHP 8.x: dichiarare sempre le proprietà delle classi, non passare `null` alle funzioni native, nullable esplicito (`?Tipo $x = null`), niente `curl_close()`.
-- SQL compatibile con **MariaDB 10.6 e MySQL 8**. Nomi di tabelle e colonne in minuscolo.
-- Verifica della sintassi, sulle due versioni estreme:
-  - PHP 8.4 (Git Bash): `cd /c/dolibarr/docker-php8 && MSYS_NO_PATHCONV=1 docker compose exec -T web php -l /var/www/html/custom/dolifield/<file>`;
-  - PHP 7.4: `C:\dolibarr\bin\php\php7.4.26\php.exe -l <file>`.
+- SQL per **MySQL 8**, provato nell'istanza Docker. Restare su SQL semplice e portabile (niente funzioni solo MySQL se c'è un'alternativa standard), così da non escludere MariaDB. Nomi di tabelle e colonne in minuscolo: sulla VPS i nomi sono case-sensitive.
+- Verifica della sintassi (Git Bash): `cd /c/dolibarr/docker-php8 && MSYS_NO_PATHCONV=1 docker compose exec -T web php -l /var/www/html/custom/<modulo>/<file>`.
+- Script di prova da riga di comando nel container: `MSYS_NO_PATHCONV=1 docker compose exec -T -w /var/www/html web php < script.php` (percorsi `/var/www/html/...`).
 
 ## Licenza e intestazioni
 

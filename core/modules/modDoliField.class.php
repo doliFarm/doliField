@@ -88,7 +88,7 @@ class modDoliField extends DolibarrModules
 		$this->conflictwith = array();
 
 		$this->langfiles = array("dolifield@dolifield");
-		$this->phpmin = array(7, 4);
+		$this->phpmin = array(8, 2);
 		$this->need_dolibarr_version = array(23, -3);
 		$this->need_javascript_ajax = 0;
 		$this->warnings_activation = array();
