@@ -1,8 +1,8 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 0.2.0 (in development)
+## 0.2.0 (2026-11-06)
 
-Weather of the plots, phase M1 (history). After the update reactivate the module (tables, tab, scheduled job, permission).
+Weather of the plots, phase M1 (history). Requires doliFarm 1.5.4. After the update reactivate the module (tables, tab, scheduled job, permission), then enter the key of the Climate Data Store in the setup.
 
 - Weather points: each plot of doliFarm with latitude and longitude is linked to the nearest point of the ERA5-Land grid (0.1 degrees); nearby plots share it.
 - History from Copernicus ERA5-Land (hourly time series by point, CC BY 4.0) through the API of the Climate Data Store: from the year set in the setup (default 1991), then every day the last days. Asynchronous requests sent and loaded by the scheduled job "Weather of the plots" (every hour); downloaded files kept in the documents (`dolifield/weather/`).
