@@ -1,7 +1,7 @@
 <?php
 /* Copyright (C) 2004-2017  Laurent Destailleur     <eldy@users.sourceforge.net>
  * Copyright (C) 2024       Frédéric France         <frederic.france@free.fr>
- * Copyright (C) 2026		Luigi Grillo
+ * Copyright (C) 2026		Luigi Grillo - doliFarm.com	<info@dolifarm.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,7 +58,6 @@ if (!$res) {
 // Libraries
 require_once DOL_DOCUMENT_ROOT."/core/lib/admin.lib.php";
 require_once '../lib/dolifield.lib.php';
-//require_once "../class/myclass.class.php";
 
 /**
  * @var Conf $conf
@@ -68,562 +67,145 @@ require_once '../lib/dolifield.lib.php';
  * @var User $user
  */
 
-// Translations
 $langs->loadLangs(array("admin", "dolifield@dolifield"));
 
-// Initialize a technical object to manage hooks of page. Note that conf->hooks_modules contains an array of hook context
-/** @var HookManager $hookmanager */
 $hookmanager->initHooks(array('dolifieldsetup', 'globalsetup'));
 
-// Parameters
 $action = GETPOST('action', 'aZ09');
 $backtopage = GETPOST('backtopage', 'alpha');
 $modulepart = GETPOST('modulepart', 'aZ09');	// Used by actions_setmoduleoptions.inc.php
 
-$value = GETPOST('value', 'alpha');
-$label = GETPOST('label', 'alpha');
-$scandir = GETPOST('scan_dir', 'alpha');
-$type = 'myobject';
-
-$error = 0;
-$setupnotempty = 0;
-
-// Access control
 if (!$user->admin) {
 	accessforbidden();
 }
 
-
-// Set this to 1 to use the factory to manage constants. Warning, the generated module will be compatible with version v15+ only
-$useFormSetup = 1;
+dol_include_once('/dolifield/class/dolifieldweather.class.php');
 
 if (!class_exists('FormSetup')) {
 	require_once DOL_DOCUMENT_ROOT.'/core/class/html.formsetup.class.php';
 }
 $formSetup = new FormSetup($db);
 
-// Access control
-if (!$user->admin) {
-	accessforbidden();
+// Weather: history from Copernicus ERA5-Land through the API of the Climate Data Store
+$formSetup->newItem('WeatherSetup')->setAsTitle();
+
+// Key of the Climate Data Store: never printed in the page, checked before it is saved (constant of entity 0,
+// stored encrypted by dolibarr_set_const because its name ends with _KEY). An empty field keeps the key.
+$item = $formSetup->newItem('DOLIFIELD_CDS_API_KEY');
+$item->nameText = $langs->transnoentities('WeatherCdsKey');
+$item->helpText = $langs->transnoentities('WeatherCdsKeyHelp');
+$cdskeyset = (getDolGlobalString('DOLIFIELD_CDS_API_KEY') !== '');
+$item->fieldInputOverride = '<input type="password" class="flat minwidth300" name="DOLIFIELD_CDS_API_KEY" value="" autocomplete="new-password" placeholder="'.dol_escape_htmltag($cdskeyset ? $langs->transnoentities('WeatherCdsKeyIsSet') : '').'">';
+if ($cdskeyset) {
+	$item->fieldInputOverride .= ' <label><input type="checkbox" name="DOLIFIELD_CDS_API_KEY_remove" value="1"> '.$langs->trans('WeatherCdsKeyRemove').'</label>';
 }
+$item->fieldOutputOverride = ($cdskeyset ? img_picto('', 'tick', 'class="pictofixedwidth"').$langs->trans('WeatherCdsKeySet') : '<span class="opacitymedium">'.$langs->trans('WeatherCdsKeyNotSet').'</span>');
+$item->setValueFromPostCallBack(function () use ($db, $langs, $conf) {
+	if (GETPOST('DOLIFIELD_CDS_API_KEY_remove', 'int')) {
+		dolibarr_del_const($db, 'DOLIFIELD_CDS_API_KEY', 0);
+		setEventMessages($langs->trans('WeatherCdsKeyRemoved'), null, 'mesgs');
+		return 0;
+	}
+	$apikey = trim(GETPOST('DOLIFIELD_CDS_API_KEY', 'password'));
+	// The header copies the posted values in the link of the print view: the key must not be there
+	unset($_POST['DOLIFIELD_CDS_API_KEY'], $_GET['DOLIFIELD_CDS_API_KEY']);
+	if ($apikey === '') {
+		return 0;
+	}
+	$previous = getDolGlobalString('DOLIFIELD_CDS_API_KEY');
+	$conf->global->DOLIFIELD_CDS_API_KEY = $apikey;
+	$weather = new DoliFieldWeather($db);
+	$check = $weather->checkKey();
+	if ($check >= 0) {
+		dolibarr_set_const($db, 'DOLIFIELD_CDS_API_KEY', $apikey, 'chaine', 0, 'Personal access token of the Climate Data Store', 0);
+		setEventMessages($langs->trans('WeatherCdsKeySaved'), null, 'mesgs');
+		if ($check == 0) {
+			setEventMessages($weather->error, null, 'warnings');
+		}
+	} else {
+		$conf->global->DOLIFIELD_CDS_API_KEY = $previous;
+		setEventMessages($weather->error, null, 'errors');
+	}
+	// The constant is written here (entity 0), not by the form
+	return 0;
+});
 
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_START_YEAR');
+$item->nameText = $langs->transnoentities('WeatherStartYear');
+$item->helpText = $langs->transnoentities('WeatherStartYearHelp');
+$item->defaultFieldValue = '1991';
+$item->cssClass = 'maxwidth75';
 
-// Enter here all parameters in your setup page
-
-// Setup conf for selection of an URL
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM1');
-$item->fieldParams['isMandatory'] = 1;
-$item->fieldAttr['placeholder'] = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP_HOST'];
-$item->cssClass = 'minwidth500';
-
-// Setup conf for selection of a simple string input
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM2');
-$item->defaultFieldValue = 'default value';
-$item->fieldAttr['placeholder'] = 'A placeholder here';
-$item->helpText = 'Tooltip text';
-
-// Setup conf for selection of a simple textarea input but we replace the text of field title
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM3');
-$item->nameText = $item->getNameText().' more html text ';
-
-// Setup conf for a selection of a Thirdparty
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM4');
-$item->setAsThirdpartyType();
-
-// Setup conf for a selection of a boolean
-$formSetup->newItem('DOLIFIELD_MYPARAM5')->setAsYesNo();	 // ->fieldParams['alertifoff'] = 1 or ->fieldParams['alertifon'] = 1;
-
-// Setup conf for a selection of an Email template of type thirdparty
-$formSetup->newItem('DOLIFIELD_MYPARAM6')->setAsEmailTemplate('thirdparty');
-
-// Setup conf for a selection of a secured key
-//$formSetup->newItem('DOLIFIELD_MYPARAM7')->setAsSecureKey();
-
-// Setup conf for a selection of a Product
-$formSetup->newItem('DOLIFIELD_MYPARAM8')->setAsProduct();
-
-// Add a title for a new section
-$formSetup->newItem('NewSection')->setAsTitle();
-
-$TField = array(
-	'test01' => $langs->trans('test01'),
-	'test02' => $langs->trans('test02'),
-	'test03' => $langs->trans('test03'),
-	'test04' => $langs->trans('test04'),
-	'test05' => $langs->trans('test05'),
-	'test06' => $langs->trans('test06'),
-);
-
-// Setup conf for a simple combo list
-$formSetup->newItem('DOLIFIELD_MYPARAM9')->setAsSelect($TField);
-
-// Setup conf for a multiselect combo list
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM10');
-$item->setAsMultiSelect($TField);
-$item->helpText = $langs->transnoentities('DOLIFIELD_MYPARAM10');
-
-// Setup conf for a category selection
-$formSetup->newItem('DOLIFIELD_CATEGORY_ID_XXX')->setAsCategory('product');
-
-// Setup conf DOLIFIELD_MYPARAM10
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM10');
-$item->setAsColor();
-$item->defaultFieldValue = '#FF0000';
-//$item->fieldValue = '';
-//$item->fieldAttr = array() ; // fields attribute only for compatible fields like input text
-//$item->fieldOverride = false; // set this var to override field output will override $fieldInputOverride and $fieldOutputOverride too
-//$item->fieldInputOverride = false; // set this var to override field input
-//$item->fieldOutputOverride = false; // set this var to override field output
-
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM11')->setAsHtml();
-$item->nameText = $item->getNameText().' more html text ';
-$item->fieldInputOverride = '';
-$item->helpText = $langs->transnoentities('HelpMessage');
-$item->cssClass = 'minwidth500';
-
-$item = $formSetup->newItem('DOLIFIELD_MYPARAM12');
-$item->fieldOverride = "Value forced, can't be modified";
-$item->cssClass = 'minwidth500';
-
-//$item = $formSetup->newItem('DOLIFIELD_MYPARAM13')->setAsDate();	// Not yet implemented
-
-// End of definition of parameters
-
-
-$setupnotempty += count($formSetup->items);
-
-
-$dirmodels = array_merge(array('/'), (array) $conf->modules_parts['models']);
-
-$moduledir = 'dolifield';
-$myTmpObjects = array();
-// TODO Scan list of objects to fill this array
-$myTmpObjects['myobject'] = array('label' => 'MyObject', 'includerefgeneration' => 0, 'includedocgeneration' => 0, 'class' => 'MyObject');
-
-$tmpobjectkey = GETPOST('object', 'aZ09');
-if ($tmpobjectkey && !array_key_exists($tmpobjectkey, $myTmpObjects)) {
-	accessforbidden('Bad value for object. Hack attempt ?');
-}
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_HOURLY_MONTHS');
+$item->nameText = $langs->transnoentities('WeatherHourlyMonths');
+$item->helpText = $langs->transnoentities('WeatherHourlyMonthsHelp');
+$item->defaultFieldValue = '13';
+$item->cssClass = 'maxwidth75';
 
 
 /*
  * Actions
  */
 
-// For retrocompatibility Dolibarr < 15.0
-if (versioncompare(explode('.', DOL_VERSION), array(15)) < 0 && $action == 'update' && !empty($user->admin)) {
-	$formSetup->saveConfFromPost();
-}
-
 include DOL_DOCUMENT_ROOT.'/core/actions_setmoduleoptions.inc.php';
 
-if ($action == 'updateMask') {
-	$maskconst = GETPOST('maskconst', 'aZ09');
-	$maskvalue = GETPOST('maskvalue', 'alpha');
-
-	if ($maskconst && preg_match('/_MASK$/', $maskconst)) {
-		$res = dolibarr_set_const($db, $maskconst, $maskvalue, 'chaine', 0, '', $conf->entity);
-		if (!($res > 0)) {
-			$error++;
-		}
+// Numbers in a valid range
+if ($action == 'update') {
+	if (GETPOSTISSET('DOLIFIELD_WEATHER_START_YEAR')) {
+		$year = GETPOSTINT('DOLIFIELD_WEATHER_START_YEAR');
+		dolibarr_set_const($db, 'DOLIFIELD_WEATHER_START_YEAR', ($year >= 1950 && $year <= (int) date('Y') ? $year : 1991), 'chaine', 0, '', $conf->entity);
 	}
-
-	if (!$error) {
-		setEventMessages($langs->trans("SetupSaved"), null, 'mesgs');
-	} else {
-		setEventMessages($langs->trans("Error"), null, 'errors');
-	}
-} elseif ($action == 'specimen' && $tmpobjectkey) {
-	$modele = GETPOST('module', 'alpha');
-
-	$className = $myTmpObjects[$tmpobjectkey]['class'];
-	$tmpobject = new $className($db);
-	'@phan-var-force MyObject $tmpobject';
-	$tmpobject->initAsSpecimen();
-
-	// Search template files
-	$file = '';
-	$className = '';
-	$dirmodels = array_merge(array('/'), (array) $conf->modules_parts['models']);
-	foreach ($dirmodels as $reldir) {
-		$file = dol_buildpath($reldir."core/modules/dolifield/doc/pdf_".$modele."_".strtolower($tmpobjectkey).".modules.php", 0);
-		if (file_exists($file)) {
-			$className = "pdf_".$modele."_".strtolower($tmpobjectkey);
-			break;
-		}
-	}
-
-	if ($className !== '') {
-		require_once $file;
-
-		$module = new $className($db);
-		'@phan-var-force ModelePDFMyObject $module';
-
-		'@phan-var-force ModelePDFMyObject $module';
-
-		if ($module->write_file($tmpobject, $langs) > 0) {
-			header("Location: ".DOL_URL_ROOT."/document.php?modulepart=dolifield-".strtolower($tmpobjectkey)."&file=SPECIMEN.pdf");
-			return;
-		} else {
-			setEventMessages($module->error, null, 'errors');
-			dol_syslog($module->error, LOG_ERR);
-		}
-	} else {
-		setEventMessages($langs->trans("ErrorModuleNotFound"), null, 'errors');
-		dol_syslog($langs->trans("ErrorModuleNotFound"), LOG_ERR);
-	}
-} elseif ($action == 'setmod') {
-	// TODO Check if numbering module chosen can be activated by calling method canBeActivated
-	if (!empty($tmpobjectkey)) {
-		$constforval = 'DOLIFIELD_'.strtoupper($tmpobjectkey)."_ADDON";
-		dolibarr_set_const($db, $constforval, $value, 'chaine', 0, '', $conf->entity);
-	}
-} elseif ($action == 'set') {
-	// Activate a model
-	$ret = addDocumentModel($value, $type, $label, $scandir);
-} elseif ($action == 'del') {
-	$ret = delDocumentModel($value, $type);
-	if ($ret > 0) {
-		if (!empty($tmpobjectkey)) {
-			$constforval = 'DOLIFIELD_'.strtoupper($tmpobjectkey).'_ADDON_PDF';
-			if (getDolGlobalString($constforval) == "$value") {
-				dolibarr_del_const($db, $constforval, $conf->entity);
-			}
-		}
-	}
-} elseif ($action == 'setdoc') {
-	// Set or unset default model
-	if (!empty($tmpobjectkey)) {
-		$constforval = 'DOLIFIELD_'.strtoupper($tmpobjectkey).'_ADDON_PDF';
-		if (dolibarr_set_const($db, $constforval, $value, 'chaine', 0, '', $conf->entity)) {
-			// The constant that was read before the new set
-			// We therefore requires a variable to have a coherent view
-			$conf->global->{$constforval} = $value;
-		}
-
-		// We disable/enable the document template (into llx_document_model table)
-		$ret = delDocumentModel($value, $type);
-		if ($ret > 0) {
-			$ret = addDocumentModel($value, $type, $label, $scandir);
-		}
-	}
-} elseif ($action == 'unsetdoc') {
-	if (!empty($tmpobjectkey)) {
-		$constforval = 'DOLIFIELD_'.strtoupper($tmpobjectkey).'_ADDON_PDF';
-		dolibarr_del_const($db, $constforval, $conf->entity);
+	if (GETPOSTISSET('DOLIFIELD_WEATHER_HOURLY_MONTHS')) {
+		dolibarr_set_const($db, 'DOLIFIELD_WEATHER_HOURLY_MONTHS', max(0, GETPOSTINT('DOLIFIELD_WEATHER_HOURLY_MONTHS')), 'chaine', 0, '', $conf->entity);
 	}
 }
 
-$action = 'edit';
+// Check of the key and of the licence of the dataset
+$cdscheck = null;
+$cdscheckerror = '';
+if ($action == 'checkcds' && getDolGlobalString('DOLIFIELD_CDS_API_KEY') !== '') {
+	$weather = new DoliFieldWeather($db);
+	$cdscheck = $weather->checkKey();
+	$cdscheckerror = $weather->error;
+}
 
 
 /*
  * View
  */
 
-$form = new Form($db);
-
-$help_url = '';
 $title = "DoliFieldSetup";
 
-llxHeader('', $langs->trans($title), $help_url, '', 0, 0, '', '', '', 'mod-dolifield page-admin');
+llxHeader('', $langs->trans($title), '', '', 0, 0, '', '', '', 'mod-dolifield page-admin');
 
-// Subheader
 $linkback = '<a href="'.($backtopage ? $backtopage : DOL_URL_ROOT.'/admin/modules.php?restore_lastsearch_values=1').'">'.img_picto($langs->trans("BackToModuleList"), 'back', 'class="pictofixedwidth"').'<span class="hideonsmartphone">'.$langs->trans("BackToModuleList").'</span></a>';
 
 print load_fiche_titre($langs->trans($title), $linkback, 'title_setup');
 
-// Configuration header
 $head = dolifieldAdminPrepareHead();
 print dol_get_fiche_head($head, 'settings', $langs->trans($title), -1, "dolifield@dolifield");
 
-// Setup page goes here
-echo '<span class="opacitymedium">'.$langs->trans("DoliFieldSetupPage").'</span><br><br>';
+print '<span class="opacitymedium">'.$langs->trans("DoliFieldSetupPage").'</span><br><br>';
 
+print $formSetup->generateOutput(true);
+print '<br>';
 
-/*if ($action == 'edit') {
- print $formSetup->generateOutput(true);
- print '<br>';
- } elseif (!empty($formSetup->items)) {
- print $formSetup->generateOutput();
- print '<div class="tabsAction">';
- print '<a class="butAction" href="'.$_SERVER["PHP_SELF"].'?action=edit&token='.newToken().'">'.$langs->trans("Modify").'</a>';
- print '</div>';
- }
- */
-if (!empty($formSetup->items)) {
-	print $formSetup->generateOutput(true);
-	print '<br>';
-}
-
-
-foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {
-	if (!empty($myTmpObjectArray['includerefgeneration'])) {
-		// Numbering models
-
-		$setupnotempty++;
-
-		print load_fiche_titre($langs->trans("NumberingModules", $myTmpObjectArray['label']), '', '');
-
-		print '<table class="noborder centpercent">';
-		print '<tr class="liste_titre">';
-		print '<td>'.$langs->trans("Name").'</td>';
-		print '<td>'.$langs->trans("Description").'</td>';
-		print '<td class="nowrap">'.$langs->trans("Example").'</td>';
-		print '<td class="center" width="60">'.$langs->trans("Status").'</td>';
-		print '<td class="center" width="16">'.$langs->trans("ShortInfo").'</td>';
-		print '</tr>'."\n";
-
-		clearstatcache();
-
-		foreach ($dirmodels as $reldir) {
-			$dir = dol_buildpath($reldir."core/modules/".$moduledir);
-
-			if (is_dir($dir)) {
-				$handle = opendir($dir);
-				if (is_resource($handle)) {
-					while (($file = readdir($handle)) !== false) {
-						if (strpos($file, 'mod_'.strtolower($myTmpObjectKey).'_') === 0 && substr($file, dol_strlen($file) - 3, 3) == 'php') {
-							$file = substr($file, 0, dol_strlen($file) - 4);
-
-							require_once $dir.'/'.$file.'.php';
-
-							$module = new $file($db);
-							'@phan-var-force ModeleNumRefMyObject $module';
-
-							// Show modules according to features level
-							if ($module->version == 'development' && getDolGlobalInt('MAIN_FEATURES_LEVEL') < 2) {
-								continue;
-							}
-							if ($module->version == 'experimental' && getDolGlobalInt('MAIN_FEATURES_LEVEL') < 1) {
-								continue;
-							}
-
-							if ($module->isEnabled()) {
-								dol_include_once('/'.$moduledir.'/class/'.strtolower($myTmpObjectKey).'.class.php');
-
-								print '<tr class="oddeven"><td>'.$module->getName($langs)."</td><td>\n";
-								print $module->info($langs);
-								print '</td>';
-
-								// Show example of numbering model
-								print '<td class="nowrap">';
-								$tmp = $module->getExample();
-								if (preg_match('/^Error/', $tmp)) {
-									$langs->load("errors");
-									print '<div class="error">'.$langs->trans($tmp).'</div>';
-								} elseif ($tmp == 'NotConfigured') {
-									print $langs->trans($tmp);
-								} else {
-									print $tmp;
-								}
-								print '</td>'."\n";
-
-								print '<td class="center">';
-								$constforvar = 'DOLIFIELD_'.strtoupper($myTmpObjectKey).'_ADDON';
-								$defaultifnotset = 'thevaluetousebydefault';
-								$activenumberingmodel = getDolGlobalString($constforvar, $defaultifnotset);
-								if ($activenumberingmodel == $file) {
-									print img_picto($langs->trans("Activated"), 'switch_on');
-								} else {
-									print '<a href="'.$_SERVER["PHP_SELF"].'?action=setmod&token='.newToken().'&object='.strtolower($myTmpObjectKey).'&value='.urlencode($file).'">';
-									print img_picto($langs->trans("Disabled"), 'switch_off');
-									print '</a>';
-								}
-								print '</td>';
-
-								$className = $myTmpObjectArray['class'];
-								$mytmpinstance = new $className($db);
-								'@phan-var-force MyObject $mytmpinstance';
-								$mytmpinstance->initAsSpecimen();
-
-								// Info
-								$htmltooltip = '';
-								$htmltooltip .= ''.$langs->trans("Version").': <b>'.$module->getVersion().'</b><br>';
-
-								$nextval = $module->getNextValue($mytmpinstance);
-								if ("$nextval" != $langs->trans("NotAvailable")) {  // Keep " on nextval
-									$htmltooltip .= ''.$langs->trans("NextValue").': ';
-									if ($nextval) {
-										if (preg_match('/^Error/', $nextval) || $nextval == 'NotConfigured') {
-											$nextval = $langs->trans($nextval);
-										}
-										$htmltooltip .= $nextval.'<br>';
-									} else {
-										$htmltooltip .= $langs->trans($module->error).'<br>';
-									}
-								}
-
-								print '<td class="center">';
-								print $form->textwithpicto('', $htmltooltip, 1, 'info');
-								print '</td>';
-
-								print "</tr>\n";
-							}
-						}
-					}
-					closedir($handle);
-				}
-			}
-		}
-		print "</table><br>\n";
-	}
-
-	if (!empty($myTmpObjectArray['includedocgeneration'])) {
-		/*
-		 * Document templates generators
-		 */
-		$setupnotempty++;
-		$type = strtolower($myTmpObjectKey);
-
-		print load_fiche_titre($langs->trans("DocumentModules", $myTmpObjectKey), '', '');
-
-		// Load array def with activated templates
-		$def = array();
-		// TODO Replace with $def = getListOfModels($db, $type);
-		$sql = "SELECT nom";
-		$sql .= " FROM ".$db->prefix()."document_model";
-		$sql .= " WHERE type = '".$db->escape($type)."'";
-		$sql .= " AND entity = ".$conf->entity;
-		$resql = $db->query($sql);
-		if ($resql) {
-			$i = 0;
-			$num_rows = $db->num_rows($resql);
-			while ($i < $num_rows) {
-				$array = $db->fetch_array($resql);
-				array_push($def, $array[0]);
-				$i++;
-			}
-		} else {
-			dol_print_error($db);
-		}
-
-		print '<table class="noborder centpercent">'."\n";
-		print '<tr class="liste_titre">'."\n";
-		print '<td>'.$langs->trans("Name").'</td>';
-		print '<td>'.$langs->trans("Description").'</td>';
-		print '<td class="center" width="60">'.$langs->trans("Status")."</td>\n";
-		print '<td class="center" width="60">'.$langs->trans("Default")."</td>\n";
-		print '<td class="center" width="38">'.$langs->trans("ShortInfo").'</td>';
-		print '<td class="center" width="38">'.$langs->trans("Preview").'</td>';
-		print "</tr>\n";
-
-		clearstatcache();
-
-		foreach ($dirmodels as $reldir) {
-			foreach (array('', '/doc') as $valdir) {
-				$realpath = $reldir."core/modules/".$moduledir.$valdir;
-				$dir = dol_buildpath($realpath);
-
-				if (is_dir($dir)) {
-					$handle = opendir($dir);
-					if (is_resource($handle)) {
-						$filelist = array();
-						while (($file = readdir($handle)) !== false) {
-							$filelist[] = $file;
-						}
-						closedir($handle);
-						arsort($filelist);
-
-						foreach ($filelist as $file) {
-							if (preg_match('/\.modules\.php$/i', $file) && preg_match('/^(pdf_|doc_)/', $file)) {
-								if (file_exists($dir.'/'.$file)) {
-									$name = substr($file, 4, dol_strlen($file) - 16);
-									$className = substr($file, 0, dol_strlen($file) - 12);
-
-									require_once $dir.'/'.$file;
-									$module = new $className($db);
-									'@phan-var-force ModelePDFMyObject $module';
-
-									$modulequalified = 1;
-									if ($module->version == 'development' && getDolGlobalInt('MAIN_FEATURES_LEVEL') < 2) {
-										$modulequalified = 0;
-									}
-									if ($module->version == 'experimental' && getDolGlobalInt('MAIN_FEATURES_LEVEL') < 1) {
-										$modulequalified = 0;
-									}
-
-									if ($modulequalified) {
-										print '<tr class="oddeven"><td width="100">';
-										print(empty($module->name) ? $name : $module->name);
-										print "</td><td>\n";
-										if (method_exists($module, 'info')) {
-											print $module->info($langs);  // @phan-suppress-current-line PhanUndeclaredMethod
-										} else {
-											print $module->description;
-										}
-										print '</td>';
-
-										// Active
-										if (in_array($name, $def)) {
-											print '<td class="center">'."\n";
-											print '<a href="'.$_SERVER["PHP_SELF"].'?action=del&token='.newToken().'&value='.urlencode($name).'">';
-											print img_picto($langs->trans("Enabled"), 'switch_on');
-											print '</a>';
-											print '</td>';
-										} else {
-											print '<td class="center">'."\n";
-											print '<a href="'.$_SERVER["PHP_SELF"].'?action=set&token='.newToken().'&value='.urlencode($name).'&scan_dir='.urlencode($module->scandir).'&label='.urlencode($module->name).'">'.img_picto($langs->trans("Disabled"), 'switch_off').'</a>';
-											print "</td>";
-										}
-
-										// Default
-										print '<td class="center">';
-										$constforvar = 'DOLIFIELD_'.strtoupper($myTmpObjectKey).'_ADDON_PDF';
-										if (getDolGlobalString($constforvar) == $name) {
-											//print img_picto($langs->trans("Default"), 'on');
-											// Even if choice is the default value, we allow to disable it. Replace this with previous line if you need to disable unset
-											print '<a href="'.$_SERVER["PHP_SELF"].'?action=unsetdoc&token='.newToken().'&object='.urlencode(strtolower($myTmpObjectKey)).'&value='.urlencode($name).'&scan_dir='.urlencode($module->scandir).'&label='.urlencode($module->name).'&amp;type='.urlencode($type).'" alt="'.$langs->trans("Disable").'">'.img_picto($langs->trans("Enabled"), 'on').'</a>';
-										} else {
-											print '<a href="'.$_SERVER["PHP_SELF"].'?action=setdoc&token='.newToken().'&object='.urlencode(strtolower($myTmpObjectKey)).'&value='.urlencode($name).'&scan_dir='.urlencode($module->scandir).'&label='.urlencode($module->name).'" alt="'.$langs->trans("Default").'">'.img_picto($langs->trans("Disabled"), 'off').'</a>';
-										}
-										print '</td>';
-
-										// Info
-										$htmltooltip = ''.$langs->trans("Name").': '.$module->name;
-										$htmltooltip .= '<br>'.$langs->trans("Type").': '.($module->type ? $module->type : $langs->trans("Unknown"));
-										if ($module->type == 'pdf') {
-											$htmltooltip .= '<br>'.$langs->trans("Width").'/'.$langs->trans("Height").': '.$module->page_largeur.'/'.$module->page_hauteur;
-										}
-										$htmltooltip .= '<br>'.$langs->trans("Path").': '.preg_replace('/^\//', '', $realpath).'/'.$file;
-
-										$htmltooltip .= '<br><br><u>'.$langs->trans("FeaturesSupported").':</u>';
-										$htmltooltip .= '<br>'.$langs->trans("Logo").': '.yn($module->option_logo, 1, 1);
-										$htmltooltip .= '<br>'.$langs->trans("MultiLanguage").': '.yn($module->option_multilang, 1, 1);
-
-										print '<td class="center">';
-										print $form->textwithpicto('', $htmltooltip, 1, 'info');
-										print '</td>';
-
-										// Preview
-										print '<td class="center">';
-										if ($module->type == 'pdf') {
-											$newname = preg_replace('/_'.preg_quote(strtolower($myTmpObjectKey), '/').'/', '', $name);
-											print '<a href="'.$_SERVER["PHP_SELF"].'?action=specimen&module='.urlencode($newname).'&object='.urlencode($myTmpObjectKey).'">'.img_object($langs->trans("Preview"), 'pdf').'</a>';
-										} else {
-											print img_object($langs->transnoentitiesnoconv("PreviewNotAvailable"), 'generic');
-										}
-										print '</td>';
-
-										print "</tr>\n";
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-
-		print '</table>';
+// Account of the Climate Data Store: licence of the dataset, accepted once on the site by the owner of the account
+print '<div class="info">'.$langs->trans('WeatherCdsHowTo', DoliFieldWeather::CDS_DATASET_PAGE).'</div>';
+if ($cdscheck !== null) {
+	if ($cdscheck > 0) {
+		print '<div class="ok">'.img_picto('', 'tick', 'class="pictofixedwidth"').$langs->trans('WeatherCdsCheckOk').'</div>';
+	} else {
+		print '<div class="error">'.dol_escape_htmltag($cdscheckerror).'</div>';
 	}
 }
-
-if (empty($setupnotempty)) {
-	print '<br>'.$langs->trans("NothingToSetup");
+if (getDolGlobalString('DOLIFIELD_CDS_API_KEY') !== '') {
+	print '<div class="tabsAction">';
+	print '<a class="butAction" href="'.dol_escape_htmltag($_SERVER['PHP_SELF'].'?action=checkcds&token='.newToken()).'">'.$langs->trans('WeatherCdsCheck').'</a>';
+	print '<a class="butAction" href="'.dol_buildpath('/dolifield/dolifield_weather.php', 1).'">'.$langs->trans('WeatherPointsList').'</a>';
+	print '</div>';
 }
 
-// Page end
 print dol_get_fiche_end();
 
 llxFooter();

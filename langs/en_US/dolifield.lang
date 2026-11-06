@@ -1,51 +1,141 @@
-# Translation file
+# Copyright (C) 2026 Luigi Grillo - doliFarm.com <info@dolifarm.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #
 # Generic
 #
-
-# Module label 'ModuleDoliFieldName'
-ModuleDoliFieldName = DoliField
-# Module description 'ModuleDoliFieldDesc'
-ModuleDoliFieldDesc = DoliField description
+ModuleDoliFieldName = doliField
+ModuleDoliFieldDesc = Field data of the doliFarm suite: sensors, weather, satellite and cameras, linked to plots, buildings and silos (in development)
+Permission50003001 = Read the field data
 
 #
 # Admin page
 #
-DoliFieldSetup = DoliField setup
+DoliFieldSetup = doliField setup
 Settings = Settings
-DoliFieldSetupPage = DoliField setup page
-NewSection=New section
-DOLIFIELD_MYPARAM1 = My param 1
-DOLIFIELD_MYPARAM1Tooltip = My param 1 tooltip
-DOLIFIELD_MYPARAM2=My param 2
-DOLIFIELD_MYPARAM2Tooltip=My param 2 tooltip
-
-
-#
-# About page
-#
+DoliFieldSetupPage = Weather of the plots; the options of the sensors and of the satellite data will come later.
 About = About
-DoliFieldAbout = About DoliField
-DoliFieldAboutPage = DoliField about page
+DoliFieldAbout = About doliField
 
 #
-# Sample page
+# Area page
 #
-DoliFieldArea = Sensoristica di campo
-MyPageName = My page name
+DoliFieldArea = Field data
+DoliFieldInDevelopment = Module in development
+DoliFieldInDevelopmentHelp = This page shows example values: no sensor, weather station or satellite service is connected yet.
+DoliFieldDemoData = Example data
+DoliFieldDemoLiveTitle = Sensors now
+DoliFieldDemoHistoryTitle = Readings of the day
+DoliFieldDemoLastTitle = Last data received from the field
+DoliFieldDemoTime = Time received
+DoliFieldDemoNode = Node
+DoliFieldDemoSoilMoisture = Soil moisture
+DoliFieldDemoGreenhouseTemp = Greenhouse temperature
+DoliFieldDemoSiloLevel = Silo level
+DoliFieldDemoStateOk = Normal
+DoliFieldDemoStateWarn = Critical threshold
+DoliFieldDemoStateFilling = Filling
 
 #
-# Sample widget
+# Menus
 #
-MyWidget = My widget
-MyWidgetDescription = My widget description
-
-
-Wheater = Meteo
+WaterManagement = Water
+ProductionManagement = Production sensors
+SoilManagement = Soil
+SolarEnergy = Energy
 Satellite = Satellite
-SolaEnergy = Gestione Energia
-SoliManagement = Gestione Suolo
-WaterManagement = Gestione Acqua
-ProductionManagement = Sensori di Produzione
-VideoCam = Video Camere
+Weather = Weather
+VideoCam = Cameras
+
+#
+# Weather
+#
+Permission50003002 = Manage the weather points and their updates
+DolifieldWeatherJob = Weather of the plots (Copernicus ERA5-Land)
+WeatherSetup = Weather
+WeatherCdsKey = Key of the Climate Data Store (Copernicus)
+WeatherCdsKeyHelp = Personal access token of the account of the Copernicus Climate Data Store (one account for doliFarm). It is in the profile of the account; it is checked before it is saved and stored encrypted.
+WeatherCdsKeyIsSet = Key already set: leave empty to keep it
+WeatherCdsKeyRemove = Remove the key
+WeatherCdsKeySet = Key set
+WeatherCdsKeyNotSet = Key not set
+WeatherCdsKeyRemoved = Key of the Climate Data Store removed
+WeatherCdsKeySaved = Key of the Climate Data Store checked and saved
+WeatherCdsKeyMissing = The key of the Copernicus Climate Data Store is missing: the weather is not updated. Set it in the setup of doliField.
+WeatherCdsKeyRefused = The Climate Data Store refuses the key
+WeatherCdsLicenceMissing = The key is valid but the account has not accepted the CC-BY licence of the ERA5-Land dataset yet: accept it once on the page of the dataset, Download tab, at the bottom
+WeatherCdsError = Error of the Climate Data Store: %s
+WeatherCdsHowTo = The weather history comes from Copernicus ERA5-Land (since 1950, grid of about 9 km, licence CC BY 4.0). A free account of the Climate Data Store is needed: copy the personal access token of the profile in the field above and accept once the CC-BY licence on the <a href="%s" target="_blank" rel="noopener">page of the dataset</a> (Download tab).
+WeatherCdsCheck = Check key and licence
+WeatherCdsCheckOk = Key valid and licence of the dataset accepted
+WeatherStartYear = Start of the history (year)
+WeatherStartYearHelp = First year downloaded for each new weather point. 1991 allows the comparison with the climate normals 1991-2020; the dataset starts in 1950.
+WeatherHourlyMonths = Hourly data in the database (months)
+WeatherHourlyMonthsHelp = Months of hourly data of the reanalysis kept in the database; daily data are always kept and the downloaded files stay in the documents. 0 = keep all hourly data.
+WeatherPointsList = Weather points
+WeatherPointsHelp = Each plot with coordinates is linked to the nearest point of the ERA5-Land grid; nearby plots share the same point. The scheduled job "Weather of the plots" downloads the history of each new point and every day the last days (the data arrive with a delay of about one week).
+WeatherSyncPlots = Link the plots
+WeatherRunNow = Update now
+WeatherPlotsLinked = Plots linked to a new point: %s
+WeatherNoPoints = No weather point: plots with latitude and longitude are needed
+WeatherPoint = Weather point
+WeatherSource = Source
+WeatherSource_era5land = Copernicus ERA5-Land (reanalysis)
+WeatherLatitude = Latitude
+WeatherLongitude = Longitude
+WeatherPlots = Plots
+WeatherDataFrom = Data from
+WeatherDataTo = Data to
+WeatherLastLoad = Last load
+WeatherPointUnused = (no plot)
+WeatherHistoryTodo = To download
+WeatherHistoryRequested = Request in progress
+WeatherHistoryLoaded = Loaded
+WeatherHistoryError = Error
+WeatherPoints = Active weather points: %s
+WeatherJobSent = request sent (%s - %s)
+WeatherJobWaiting = request waiting (%s)
+WeatherJobFailed = request failed (%s)
+WeatherDaysLoaded = %s days loaded (%s - %s)
+WeatherHourlyPurged = Hourly lines beyond the period kept removed: %s
+WeatherFileUnreadable = Downloaded file not readable: %s
+WeatherFileEmpty = The downloaded file contains no data
+WeatherCsvUnknown = Format of the file not recognised (columns: %s)
+WeatherCsvNotAligned = The files of the download have different hours (%s)
+WeatherAttributionEra5 = Data: Copernicus Climate Change Service (C3S), ERA5-Land, licence CC BY 4.0; means and sums calculated by doliField. Generated using Copernicus Climate Change Service information.
+WeatherDaysUtc = Days in UTC time.
+WeatherPlotNoCoords = The plot has no latitude and longitude: enter them in the card to get the weather.
+WeatherPlotNoPoint = The plot is not linked to a weather point yet: it will be at the next run of the scheduled job.
+WeatherDistance = %s km from the plot
+WeatherDataPeriod = Data available
+WeatherPrecipTitle = Precipitation up to %s
+WeatherPrecip = Precipitation
+WeatherNormal = Mean %s-%s
+WeatherNormalShort = Mean
+WeatherDifference = Difference
+WeatherLastDays = Last %s days
+WeatherLastDaysTitle = Last days
+WeatherTmin = Min T
+WeatherTmax = Max T
+WeatherTminMean = Mean of the minimums
+WeatherTmaxMean = Mean of the maximums
+WeatherRh = Relative humidity
+WeatherWind = Mean wind
+WeatherRadiation = Radiation
+WeatherSoilWater = Soil water (0-7 cm)
+WeatherMonthsTitle = Last 12 months
+WeatherPartialMonth = %s days
+WeatherYearsTitle = Years
+WeatherPartialYear = incomplete year: %s days

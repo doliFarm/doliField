@@ -19,7 +19,6 @@
 # Other
 *.back
 /.editorconfig
-/.gitattributes
 
 # Sistema operativo
 .DS_Store
@@ -49,3 +48,6 @@ Thumbs.db
 
 # Dipendenze generate
 /vendor/
+
+# Documenti interni di progettazione
+/docs/
