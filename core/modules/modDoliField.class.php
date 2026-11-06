@@ -55,7 +55,7 @@ class modDoliField extends DolibarrModules
 		$this->descriptionlong = "ModuleDoliFieldDesc";
 		$this->editor_name = 'doliFarm.com';
 		$this->editor_url = 'https://www.dolifarm.com';
-		$this->version = '0.1.0';
+		$this->version = '0.2.0';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		// Icon of the suite when doliFarm is installed
 		$this->picto = (function_exists('dolifarm_get_fa_icon') ? dolifarm_get_fa_icon('dolifield') : 'fa-satellite-dish');
@@ -78,7 +78,7 @@ class modDoliField extends DolibarrModules
 			'captcha' => 0
 		);
 
-		$this->dirs = array("/dolifield/temp");
+		$this->dirs = array("/dolifield/temp", "/dolifield/weather");
 		$this->config_page_url = array("setup.php@dolifield");
 		$this->hidden = getDolGlobalInt('MODULE_DOLIFIELD_DISABLED');
 
@@ -101,10 +101,30 @@ class modDoliField extends DolibarrModules
 			$conf->dolifield->enabled = 0;
 		}
 
-		$this->tabs = array();
+		// Weather tab on the plots of doliFarm
+		$this->tabs = array(
+			array('data' => 'dolifarmplot@dolifarm:+dolifieldweather:Weather:dolifield@dolifield:$user->hasRight("dolifield", "read"):/dolifield/dolifield_plot_weather.php?id=__ID__'),
+		);
 		$this->dictionaries = array();
 		$this->boxes = array();
-		$this->cronjobs = array();
+		// Weather: weather points of the plots, history and updates from Copernicus ERA5-Land (needs the key of the
+		// Climate Data Store, set in the setup). Every hour: a request sent is checked at the next run.
+		$this->cronjobs = array(
+			0 => array(
+				'label' => 'DolifieldWeatherJob',
+				'jobtype' => 'method',
+				'class' => '/dolifield/class/dolifieldweather.class.php',
+				'objectname' => 'DoliFieldWeather',
+				'method' => 'cronUpdate',
+				'parameters' => '',
+				'comment' => 'Weather of the plots: history and updates from Copernicus ERA5-Land',
+				'frequency' => 1,
+				'unitfrequency' => 3600,
+				'status' => 1,
+				'test' => 'isModEnabled("dolifield")',
+				'priority' => 50,
+			),
+		);
 
 		// Permissions
 		$this->rights = array();
@@ -114,8 +134,13 @@ class modDoliField extends DolibarrModules
 		$this->rights[$r][4] = 'read';
 		$this->rights[$r][5] = '';
 		$r++;
+		$this->rights[$r][0] = $this->numero.sprintf("%02d", 2);
+		$this->rights[$r][1] = 'Manage the weather points and their updates';
+		$this->rights[$r][4] = 'weather';
+		$this->rights[$r][5] = 'write';
+		$r++;
 
-		// Menus: one entry for each area of the field data (pages still to be written: all open the area page)
+		// Menus: one entry for each area of the field data (pages still to be written open the area page; Weather has its page)
 		$this->menu = array();
 		$r = 0;
 		$this->menu[$r++] = array(
@@ -150,7 +175,7 @@ class modDoliField extends DolibarrModules
 				'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
 				'mainmenu' => 'dolifield',
 				'leftmenu' => 'dolifield_'.$code,
-				'url' => '/dolifield/dolifieldindex.php',
+				'url' => ($code == 'weather' ? '/dolifield/dolifield_weather.php' : '/dolifield/dolifieldindex.php'),
 				'langs' => 'dolifield@dolifield',
 				'position' => 1000 + $r,
 				'enabled' => "isModEnabled('dolifield')",

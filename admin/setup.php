@@ -71,13 +71,103 @@ $langs->loadLangs(array("admin", "dolifield@dolifield"));
 
 $hookmanager->initHooks(array('dolifieldsetup', 'globalsetup'));
 
+$action = GETPOST('action', 'aZ09');
 $backtopage = GETPOST('backtopage', 'alpha');
+$modulepart = GETPOST('modulepart', 'aZ09');	// Used by actions_setmoduleoptions.inc.php
 
 if (!$user->admin) {
 	accessforbidden();
 }
 
-// No option yet: the sensors, the weather service and the satellite data will add theirs
+dol_include_once('/dolifield/class/dolifieldweather.class.php');
+
+if (!class_exists('FormSetup')) {
+	require_once DOL_DOCUMENT_ROOT.'/core/class/html.formsetup.class.php';
+}
+$formSetup = new FormSetup($db);
+
+// Weather: history from Copernicus ERA5-Land through the API of the Climate Data Store
+$formSetup->newItem('WeatherSetup')->setAsTitle();
+
+// Key of the Climate Data Store: never printed in the page, checked before it is saved (constant of entity 0,
+// stored encrypted by dolibarr_set_const because its name ends with _KEY). An empty field keeps the key.
+$item = $formSetup->newItem('DOLIFIELD_CDS_API_KEY');
+$item->nameText = $langs->transnoentities('WeatherCdsKey');
+$item->helpText = $langs->transnoentities('WeatherCdsKeyHelp');
+$cdskeyset = (getDolGlobalString('DOLIFIELD_CDS_API_KEY') !== '');
+$item->fieldInputOverride = '<input type="password" class="flat minwidth300" name="DOLIFIELD_CDS_API_KEY" value="" autocomplete="new-password" placeholder="'.dol_escape_htmltag($cdskeyset ? $langs->transnoentities('WeatherCdsKeyIsSet') : '').'">';
+if ($cdskeyset) {
+	$item->fieldInputOverride .= ' <label><input type="checkbox" name="DOLIFIELD_CDS_API_KEY_remove" value="1"> '.$langs->trans('WeatherCdsKeyRemove').'</label>';
+}
+$item->fieldOutputOverride = ($cdskeyset ? img_picto('', 'tick', 'class="pictofixedwidth"').$langs->trans('WeatherCdsKeySet') : '<span class="opacitymedium">'.$langs->trans('WeatherCdsKeyNotSet').'</span>');
+$item->setValueFromPostCallBack(function () use ($db, $langs, $conf) {
+	if (GETPOST('DOLIFIELD_CDS_API_KEY_remove', 'int')) {
+		dolibarr_del_const($db, 'DOLIFIELD_CDS_API_KEY', 0);
+		setEventMessages($langs->trans('WeatherCdsKeyRemoved'), null, 'mesgs');
+		return 0;
+	}
+	$apikey = trim(GETPOST('DOLIFIELD_CDS_API_KEY', 'password'));
+	// The header copies the posted values in the link of the print view: the key must not be there
+	unset($_POST['DOLIFIELD_CDS_API_KEY'], $_GET['DOLIFIELD_CDS_API_KEY']);
+	if ($apikey === '') {
+		return 0;
+	}
+	$previous = getDolGlobalString('DOLIFIELD_CDS_API_KEY');
+	$conf->global->DOLIFIELD_CDS_API_KEY = $apikey;
+	$weather = new DoliFieldWeather($db);
+	$check = $weather->checkKey();
+	if ($check >= 0) {
+		dolibarr_set_const($db, 'DOLIFIELD_CDS_API_KEY', $apikey, 'chaine', 0, 'Personal access token of the Climate Data Store', 0);
+		setEventMessages($langs->trans('WeatherCdsKeySaved'), null, 'mesgs');
+		if ($check == 0) {
+			setEventMessages($weather->error, null, 'warnings');
+		}
+	} else {
+		$conf->global->DOLIFIELD_CDS_API_KEY = $previous;
+		setEventMessages($weather->error, null, 'errors');
+	}
+	// The constant is written here (entity 0), not by the form
+	return 0;
+});
+
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_START_YEAR');
+$item->nameText = $langs->transnoentities('WeatherStartYear');
+$item->helpText = $langs->transnoentities('WeatherStartYearHelp');
+$item->defaultFieldValue = '1991';
+$item->cssClass = 'maxwidth75';
+
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_HOURLY_MONTHS');
+$item->nameText = $langs->transnoentities('WeatherHourlyMonths');
+$item->helpText = $langs->transnoentities('WeatherHourlyMonthsHelp');
+$item->defaultFieldValue = '13';
+$item->cssClass = 'maxwidth75';
+
+
+/*
+ * Actions
+ */
+
+include DOL_DOCUMENT_ROOT.'/core/actions_setmoduleoptions.inc.php';
+
+// Numbers in a valid range
+if ($action == 'update') {
+	if (GETPOSTISSET('DOLIFIELD_WEATHER_START_YEAR')) {
+		$year = GETPOSTINT('DOLIFIELD_WEATHER_START_YEAR');
+		dolibarr_set_const($db, 'DOLIFIELD_WEATHER_START_YEAR', ($year >= 1950 && $year <= (int) date('Y') ? $year : 1991), 'chaine', 0, '', $conf->entity);
+	}
+	if (GETPOSTISSET('DOLIFIELD_WEATHER_HOURLY_MONTHS')) {
+		dolibarr_set_const($db, 'DOLIFIELD_WEATHER_HOURLY_MONTHS', max(0, GETPOSTINT('DOLIFIELD_WEATHER_HOURLY_MONTHS')), 'chaine', 0, '', $conf->entity);
+	}
+}
+
+// Check of the key and of the licence of the dataset
+$cdscheck = null;
+$cdscheckerror = '';
+if ($action == 'checkcds' && getDolGlobalString('DOLIFIELD_CDS_API_KEY') !== '') {
+	$weather = new DoliFieldWeather($db);
+	$cdscheck = $weather->checkKey();
+	$cdscheckerror = $weather->error;
+}
 
 
 /*
@@ -96,7 +186,25 @@ $head = dolifieldAdminPrepareHead();
 print dol_get_fiche_head($head, 'settings', $langs->trans($title), -1, "dolifield@dolifield");
 
 print '<span class="opacitymedium">'.$langs->trans("DoliFieldSetupPage").'</span><br><br>';
-print $langs->trans("NothingToSetup");
+
+print $formSetup->generateOutput(true);
+print '<br>';
+
+// Account of the Climate Data Store: licence of the dataset, accepted once on the site by the owner of the account
+print '<div class="info">'.$langs->trans('WeatherCdsHowTo', DoliFieldWeather::CDS_DATASET_PAGE).'</div>';
+if ($cdscheck !== null) {
+	if ($cdscheck > 0) {
+		print '<div class="ok">'.img_picto('', 'tick', 'class="pictofixedwidth"').$langs->trans('WeatherCdsCheckOk').'</div>';
+	} else {
+		print '<div class="error">'.dol_escape_htmltag($cdscheckerror).'</div>';
+	}
+}
+if (getDolGlobalString('DOLIFIELD_CDS_API_KEY') !== '') {
+	print '<div class="tabsAction">';
+	print '<a class="butAction" href="'.dol_escape_htmltag($_SERVER['PHP_SELF'].'?action=checkcds&token='.newToken()).'">'.$langs->trans('WeatherCdsCheck').'</a>';
+	print '<a class="butAction" href="'.dol_buildpath('/dolifield/dolifield_weather.php', 1).'">'.$langs->trans('WeatherPointsList').'</a>';
+	print '</div>';
+}
 
 print dol_get_fiche_end();
 

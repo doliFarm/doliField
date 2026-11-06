@@ -2,7 +2,7 @@
 
 Modulo esterno Dolibarr per i dati di campo: sensori, meteo, satellite e videocamere, collegati ad appezzamenti, fabbricati e silos di doliFarm. Fa parte della suite doliFarm insieme a doliFarm (fascicolo e anagrafiche), doliTrace (tracciabilità e quaderno di campagna), doliAgroPass e doliGas.
 
-**Stato: in sviluppo.** La versione 0.1.0 ha solo la pagina dimostrativa `dolifieldindex.php` con valori di esempio scritti nel codice: nessun sensore è collegato.
+**Stato: in sviluppo.** La 0.2.0 ha il meteo degli appezzamenti, fase M1 (storico Copernicus ERA5-Land, analisi in `../dolifarm/docs/meteo_analisi.md`); `dolifieldindex.php` mostra ancora valori di esempio scritti nel codice: nessun sensore è collegato.
 
 ## Regole fondamentali
 
@@ -38,15 +38,17 @@ Modulo esterno Dolibarr per i dati di campo: sensori, meteo, satellite e videoca
 
 ## Struttura
 
-- `core/modules/modDoliField.class.php`: descrittore (numero 500030, permesso `read`, menu delle aree).
+- `core/modules/modDoliField.class.php`: descrittore (numero 500030, permessi `read` e `weather`/`write`, menu delle aree, tab Meteo sull'appezzamento, lavoro pianificato del meteo).
+- `class/dolifieldweather.class.php`: meteo. Punti meteo (cella della griglia ERA5-Land, tabelle `dolifield_weather_station` e `dolifield_weather_plot`), client dell'API del Climate Data Store (header `PRIVATE-TOKEN`, richieste asincrone `retrieve/v1/processes/reanalysis-era5-land-timeseries/execution`, stato e risultati da `retrieve/v1/jobs/<id>`), import del CSV con i valori cumulati dalle 00 UTC riconosciuti e scomposti, dati giornalieri (`dolifield_weather_daily`, per sempre) e orari (`dolifield_weather_hourly`, mesi del setup). Unità del sistema internazionale, orari in UTC.
+- `dolifield_weather.php`: punti meteo e stato dello storico; `dolifield_plot_weather.php`: tab Meteo dell'appezzamento.
 - `dolifieldindex.php`: pagina dell'area (dimostrativa).
-- `admin/`: setup (ancora senza opzioni) e informazioni. `lib/dolifield.lib.php`: schede del setup.
+- `admin/`: setup (chiave del Climate Data Store, anno di inizio, mesi di dati orari) e informazioni. `lib/dolifield.lib.php`: schede del setup.
 - `langs/{it_IT,en_US,fr_FR}/dolifield.lang`: le chiavi sono in inglese; il testo italiano va solo nei valori.
 
 ## Database e SQL
 
 - Dolibarr esegue `sql/llx_*.sql`, poi `sql/llx_*.key.sql`, poi `sql/data*.sql`, poi `sql/update_*.sql` **a ogni attivazione del modulo**. Gli script devono essere **idempotenti e non distruttivi**: `CREATE TABLE IF NOT EXISTS`, niente `DROP TABLE`, `INSERT` che non duplicano.
-- Le letture dei sensori crescono in fretta: prevedere aggregati giornalieri e una regola di conservazione fin dalla prima tabella.
+- Le letture dei sensori crescono in fretta: prevedere aggregati giornalieri e una regola di conservazione fin dalla prima tabella (il meteo lo fa già: giornalieri per sempre, orari per i mesi del setup, file scaricati nei documenti).
 - Gli indici unici sugli oggetti multi-entity devono includere `entity`.
 - Prefisso: `llx_` nei file `.sql`; nel codice `MAIN_DB_PREFIX` o `$this->db->prefix()`.
 
