@@ -114,6 +114,7 @@ WeatherHourlyPurged = Lignes horaires au-delà de la période gardée supprimée
 WeatherFileUnreadable = Fichier téléchargé illisible : %s
 WeatherFileEmpty = Le fichier téléchargé ne contient pas de données
 WeatherCsvUnknown = Format du fichier non reconnu (colonnes : %s)
+WeatherCsvNotAligned = Les fichiers du téléchargement ont des heures différentes (%s)
 WeatherAttributionEra5 = Données : Copernicus Climate Change Service (C3S), ERA5-Land, licence CC BY 4.0 ; moyennes et sommes calculées par doliField. Generated using Copernicus Climate Change Service information.
 WeatherDaysUtc = Jours en heure UTC.
 WeatherPlotNoCoords = La parcelle n'a pas de latitude ni de longitude : les saisir dans la fiche pour avoir la météo.

@@ -63,6 +63,8 @@ class DoliFieldWeather
 	const UPDATE_EVERY_HOURS = 20;
 	/** New requests sent by one run of the scheduled job */
 	const MAX_REQUESTS_PER_RUN = 5;
+	/** Failed downloads or loads of a request done, before sending a new one */
+	const MAX_DOWNLOAD_ERRORS = 5;
 
 	/** Variables of ERA5-Land requested */
 	const ERA5LAND_VARIABLES = array(
@@ -590,10 +592,14 @@ class DoliFieldWeather
 	 */
 
 	/**
-	 * Open the CSV of a downloaded file (zip with one CSV, or CSV)
+	 * Open the CSV of a downloaded file
 	 *
-	 * @param	string	$file		Downloaded file
-	 * @param	string	$tmpfile	Extracted CSV to delete after the import ('' if none)
+	 * The CDS sends a zip with one CSV for each group of variables (temperature, precipitation and pressure, wind,
+	 * radiation, soil water), all with the same hours. Their columns are joined in one CSV, in the temporary
+	 * directory: valid_time, latitude, longitude, then the variables.
+	 *
+	 * @param	string	$file		Downloaded file (zip, or one CSV)
+	 * @param	string	$tmpfile	Joined CSV to delete after the import ('' if none)
 	 * @return	resource|false		Handle of the CSV
 	 */
 	private function openCsv(string $file, string &$tmpfile)
@@ -602,42 +608,112 @@ class DoliFieldWeather
 
 		$tmpfile = '';
 		$head = (string) file_get_contents($file, false, null, 0, 4);
-		if (substr($head, 0, 2) === 'PK') {
-			$zip = new ZipArchive();
-			if ($zip->open($file) !== true) {
-				$this->error = $langs->trans('WeatherFileUnreadable', basename($file));
-				return false;
-			}
-			$name = '';
-			for ($i = 0; $i < $zip->numFiles; $i++) {
-				$entry = (string) $zip->getNameIndex($i);
-				if (preg_match('/\.csv$/i', $entry)) {
-					$name = $entry;
-					break;
+		if (substr($head, 0, 2) !== 'PK') {
+			return fopen($file, 'r');
+		}
+
+		$zip = new ZipArchive();
+		if ($zip->open($file) !== true) {
+			$this->error = $langs->trans('WeatherFileUnreadable', basename($file));
+			return false;
+		}
+		$streams = array();
+		for ($i = 0; $i < $zip->numFiles; $i++) {
+			$entry = (string) $zip->getNameIndex($i);
+			if (preg_match('/\.csv$/i', $entry)) {
+				$stream = $zip->getStream($entry);
+				if ($stream !== false) {
+					$streams[] = $stream;
 				}
 			}
-			if ($name === '') {
-				$zip->close();
-				$this->error = $langs->trans('WeatherFileUnreadable', basename($file));
-				return false;
-			}
-			$tmpdir = $conf->dolifield->dir_temp;
-			dol_mkdir($tmpdir);
-			$tmpfile = $tmpdir.'/weather_'.bin2hex(random_bytes(8)).'.csv';
-			$in = $zip->getStream($name);
-			$out = fopen($tmpfile, 'wb');
-			if ($in === false || $out === false) {
-				$zip->close();
-				$this->error = $langs->trans('WeatherFileUnreadable', basename($file));
-				return false;
-			}
-			stream_copy_to_stream($in, $out);
-			fclose($in);
-			fclose($out);
-			$zip->close();
-			$file = $tmpfile;
 		}
-		return fopen($file, 'r');
+		$closeall = static function () use (&$streams, $zip): void {
+			foreach ($streams as $stream) {
+				fclose($stream);
+			}
+			$zip->close();
+		};
+		if (!count($streams)) {
+			$closeall();
+			$this->error = $langs->trans('WeatherFileUnreadable', basename($file));
+			return false;
+		}
+
+		// Columns of each CSV: time, latitude and longitude are taken from the first one
+		$parts = array();
+		$header = array('valid_time', 'latitude', 'longitude');
+		foreach ($streams as $k => $stream) {
+			$h = fgetcsv($stream, 0, ',', '"', '');
+			$h = (is_array($h) ? $h : array());
+			$cols = self::csvColumns($h);
+			if (!isset($cols['time'])) {
+				$closeall();
+				$this->error = $langs->trans('WeatherCsvUnknown', dol_trunc(implode(',', $h), 200));
+				return false;
+			}
+			$vars = array();
+			foreach ($h as $i => $name) {
+				if ($i != $cols['time'] && $i !== ($cols['lat'] ?? null) && $i !== ($cols['lon'] ?? null)) {
+					$vars[$i] = (string) $name;
+					$header[] = (string) $name;
+				}
+			}
+			$parts[$k] = array('cols' => $cols, 'vars' => $vars);
+		}
+
+		$tmpdir = $conf->dolifield->dir_temp;
+		dol_mkdir($tmpdir);
+		$tmpfile = $tmpdir.'/weather_'.bin2hex(random_bytes(8)).'.csv';
+		$out = fopen($tmpfile, 'wb');
+		if ($out === false) {
+			$closeall();
+			$this->error = $langs->trans('ErrorFailToCreateFile', $tmpfile);
+			$tmpfile = '';
+			return false;
+		}
+		fputcsv($out, $header, ',', '"', '');
+		$error = '';
+		while (true) {
+			$line = null;
+			$time = '';
+			$ended = 0;
+			foreach ($streams as $k => $stream) {
+				$row = fgetcsv($stream, 0, ',', '"', '');
+				if ($row === false) {
+					$ended++;
+					continue;
+				}
+				$cols = $parts[$k]['cols'];
+				$rowtime = trim((string) ($row[$cols['time']] ?? ''));
+				if ($line === null) {
+					$time = $rowtime;
+					$line = array($rowtime, (string) ($row[$cols['lat'] ?? -1] ?? ''), (string) ($row[$cols['lon'] ?? -1] ?? ''));
+				} elseif ($rowtime !== $time) {
+					$error = $time.' / '.$rowtime;
+					break 2;
+				}
+				foreach ($parts[$k]['vars'] as $i => $name) {
+					$line[] = (string) ($row[$i] ?? '');
+				}
+			}
+			if ($ended == count($streams)) {
+				break;
+			}
+			if ($ended > 0) {
+				$error = $time;
+				break;
+			}
+			fputcsv($out, $line, ',', '"', '');
+		}
+		fclose($out);
+		$closeall();
+		if ($error !== '') {
+			@unlink($tmpfile);
+			$tmpfile = '';
+			$this->error = $langs->trans('WeatherCsvNotAligned', $error);
+			return false;
+		}
+		return fopen($tmpfile, 'r');
 	}
 
 	/**
@@ -1101,7 +1177,7 @@ class DoliFieldWeather
 	{
 		global $conf, $langs;
 
-		$langs->load('dolifield@dolifield');
+		$langs->loadLangs(array('errors', 'dolifield@dolifield'));
 		$this->output = '';
 		$this->error = '';
 		$nberror = 0;
@@ -1153,14 +1229,14 @@ class DoliFieldWeather
 				}
 				$file = self::archiveDir($station).'/era5land_'.$station['history_job_from'].'_'.$station['history_job_to'].'.zip';
 				if (!$this->downloadResult($station['history_job'], $file)) {
-					$this->stationError($station, $this->error);
+					$this->stationError($station, $this->error, true);
 					$nberror++;
 					$lines[] = $name.': '.$this->error;
 					continue;
 				}
 				$nbdays = $this->importEra5File($station, $file);
 				if ($nbdays < 0) {
-					$this->stationError($station, $this->error);
+					$this->stationError($station, $this->error, true);
 					$nberror++;
 					$lines[] = $name.': '.$this->error;
 					continue;
@@ -1225,12 +1301,19 @@ class DoliFieldWeather
 	 *
 	 * @param	array<string,mixed>	$station	Weather point
 	 * @param	string				$message	Error
+	 * @param	bool				$keepjob	The request is done on the CDS: keep it, so that the next runs try again
+	 *										the download and the load (the results stay on the CDS for some days)
 	 * @return	void
 	 */
-	private function stationError(array $station, string $message): void
+	private function stationError(array $station, string $message, bool $keepjob = false): void
 	{
+		$nberrors = $station['nb_errors'] + 1;
+		if ($keepjob && $nberrors < self::MAX_DOWNLOAD_ERRORS) {
+			$this->updateStation($station['id'], array('nb_errors' => $nberrors, 'last_error' => dol_trunc($message, 1000)));
+			return;
+		}
 		$this->updateStation($station['id'], array('history_status' => self::HISTORY_ERROR, 'history_job' => null,
-			'nb_errors' => $station['nb_errors'] + 1, 'last_error' => dol_trunc($message, 1000)));
+			'nb_errors' => $nberrors, 'last_error' => dol_trunc($message, 1000)));
 	}
 
 
