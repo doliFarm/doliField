@@ -142,6 +142,35 @@ $item->helpText = $langs->transnoentities('WeatherHourlyMonthsHelp');
 $item->defaultFieldValue = '13';
 $item->cssClass = 'maxwidth75';
 
+// Forecasts of MET Norway: contact in the User-Agent (terms of service)
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_CONTACT');
+$item->nameText = $langs->transnoentities('WeatherContact');
+$item->helpText = $langs->transnoentities('WeatherContactHelp');
+$item->cssClass = 'minwidth300';
+
+// Thresholds of the warnings on the treatments and of the windows suited to the treatments
+$formSetup->newItem('WeatherThresholds')->setAsTitle();
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_WIND_MAX');
+$item->nameText = $langs->transnoentities('WeatherWindMax');
+$item->helpText = $langs->transnoentities('WeatherWindMaxHelp');
+$item->defaultFieldValue = '5';
+$item->cssClass = 'maxwidth75';
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_RAIN_MM');
+$item->nameText = $langs->transnoentities('WeatherRainMm');
+$item->helpText = $langs->transnoentities('WeatherRainMmHelp');
+$item->defaultFieldValue = '1';
+$item->cssClass = 'maxwidth75';
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_RAIN_HOURS');
+$item->nameText = $langs->transnoentities('WeatherRainHours');
+$item->helpText = $langs->transnoentities('WeatherRainHoursHelp');
+$item->defaultFieldValue = '6';
+$item->cssClass = 'maxwidth75';
+$item = $formSetup->newItem('DOLIFIELD_WEATHER_TEMP_MAX');
+$item->nameText = $langs->transnoentities('WeatherTempMax');
+$item->helpText = $langs->transnoentities('WeatherTempMaxHelp');
+$item->defaultFieldValue = '30';
+$item->cssClass = 'maxwidth75';
+
 
 /*
  * Actions
@@ -157,6 +186,18 @@ if ($action == 'update') {
 	}
 	if (GETPOSTISSET('DOLIFIELD_WEATHER_HOURLY_MONTHS')) {
 		dolibarr_set_const($db, 'DOLIFIELD_WEATHER_HOURLY_MONTHS', max(0, GETPOSTINT('DOLIFIELD_WEATHER_HOURLY_MONTHS')), 'chaine', 0, '', $conf->entity);
+	}
+	// Thresholds: positive numbers, decimal comma accepted
+	foreach (array('DOLIFIELD_WEATHER_WIND_MAX' => array(0.5, 30, '5'), 'DOLIFIELD_WEATHER_RAIN_MM' => array(0.1, 100, '1'), 'DOLIFIELD_WEATHER_TEMP_MAX' => array(10, 50, '30')) as $name => $range) {
+		if (GETPOSTISSET($name)) {
+			$value = str_replace(',', '.', trim(GETPOST($name, 'alphanohtml')));
+			$value = (is_numeric($value) && (float) $value >= $range[0] && (float) $value <= $range[1] ? (string) (float) $value : $range[2]);
+			dolibarr_set_const($db, $name, $value, 'chaine', 0, '', $conf->entity);
+		}
+	}
+	if (GETPOSTISSET('DOLIFIELD_WEATHER_RAIN_HOURS')) {
+		$hours = GETPOSTINT('DOLIFIELD_WEATHER_RAIN_HOURS');
+		dolibarr_set_const($db, 'DOLIFIELD_WEATHER_RAIN_HOURS', ($hours >= 1 && $hours <= 48 ? $hours : 6), 'chaine', 0, '', $conf->entity);
 	}
 }
 

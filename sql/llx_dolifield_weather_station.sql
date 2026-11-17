@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS llx_dolifield_weather_station(
 	date_last_load datetime,
 	nb_errors integer DEFAULT 0 NOT NULL,
 	last_error text,
+	forecast_run datetime,						-- time of the last forecast loaded (UTC)
+	forecast_expires datetime,					-- the source asks not to call again before this time (UTC)
+	forecast_modified varchar(64),				-- Last-Modified of the last answer, sent back as If-Modified-Since
+	date_last_forecast datetime,				-- last call for the forecast
+	forecast_error text,
 	datec datetime,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=innodb;

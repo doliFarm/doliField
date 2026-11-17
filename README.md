@@ -6,7 +6,7 @@ doliField collects the field data of the doliFarm suite: sensors, weather, satel
 
 **In development.** Version 0.1.0 has only a demonstration page with example values: no sensor, weather station or satellite service is connected yet.
 
-Requirements: Dolibarr 23 or later, doliFarm enabled, PHP 7.4 to 8.5. The folder must be named `dolifield` in lower case:
+Requirements: Dolibarr 23 or later, doliFarm enabled, PHP 8.2 or later (tested on 8.4). The folder must be named `dolifield` in lower case:
 
     git clone git@github.com:doliFarm/doliField.git dolifield
 

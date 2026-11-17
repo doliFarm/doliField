@@ -38,11 +38,12 @@ Modulo esterno Dolibarr per i dati di campo: sensori, meteo, satellite e videoca
 
 ## Struttura
 
-- `core/modules/modDoliField.class.php`: descrittore (numero 500030, permessi `read` e `weather`/`write`, menu delle aree, tab Meteo sull'appezzamento, lavoro pianificato del meteo).
-- `class/dolifieldweather.class.php`: meteo. Punti meteo (cella della griglia ERA5-Land, tabelle `dolifield_weather_station` e `dolifield_weather_plot`), client dell'API del Climate Data Store (header `PRIVATE-TOKEN`, richieste asincrone `retrieve/v1/processes/reanalysis-era5-land-timeseries/execution`, stato e risultati da `retrieve/v1/jobs/<id>`), import del CSV con i valori cumulati dalle 00 UTC riconosciuti e scomposti, dati giornalieri (`dolifield_weather_daily`, per sempre) e orari (`dolifield_weather_hourly`, mesi del setup). Unità del sistema internazionale, orari in UTC.
+- `core/modules/modDoliField.class.php`: descrittore (numero 500030, permessi `read` e `weather`/`write`, menu delle aree, tab Meteo sull'appezzamento, lavori pianificati dello storico e delle previsioni, widget).
+- `class/dolifieldweather.class.php`: meteo. Punti meteo (cella della griglia ERA5-Land, tabelle `dolifield_weather_station` e `dolifield_weather_plot`), client dell'API del Climate Data Store (header `PRIVATE-TOKEN`, richieste asincrone `retrieve/v1/processes/reanalysis-era5-land-timeseries/execution`, stato e risultati da `retrieve/v1/jobs/<id>`), import del CSV con i valori cumulati dalle 00 UTC riconosciuti e scomposti, dati giornalieri (`dolifield_weather_daily`, per sempre) e orari (`dolifield_weather_hourly`, mesi del setup). Previsioni di MET Norway Locationforecast 2.0 `complete` (User-Agent con contatto, Expires e If-Modified-Since, risposte grezze .json.gz nei documenti) nella tabella oraria con `kind` 3: ogni previsione sostituisce le ore dalla sua prima in poi, le ore passate restano. `getConditions()`/`formatConditions()`/`conditionWarnings()` danno a doliTrace le condizioni di un periodo (osservato, poi rianalisi, poi previsione). Unità del sistema internazionale, orari in UTC.
 - `dolifield_weather.php`: punti meteo e stato dello storico; `dolifield_plot_weather.php`: tab Meteo dell'appezzamento.
+- `core/boxes/box_dolifield_weather.php`: widget del meteo delle prossime 48 ore.
 - `dolifieldindex.php`: pagina dell'area (dimostrativa).
-- `admin/`: setup (chiave del Climate Data Store, anno di inizio, mesi di dati orari) e informazioni. `lib/dolifield.lib.php`: schede del setup.
+- `admin/`: setup (chiave del Climate Data Store, anno di inizio, mesi di dati orari, contatto per MET Norway, soglie dei trattamenti) e informazioni. `lib/dolifield.lib.php`: schede del setup.
 - `langs/{it_IT,en_US,fr_FR}/dolifield.lang`: le chiavi sono in inglese; il testo italiano va solo nei valori.
 
 ## Database e SQL
