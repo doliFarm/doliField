@@ -1,6 +1,6 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 0.3.0 (in development)
+## 0.3.0 (2026-11-17)
 
 Weather of the plots, phase M2 (forecasts). After the update reactivate the module (new columns, scheduled job "Weather forecasts of the plots", widget).
 
