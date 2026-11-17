@@ -55,7 +55,7 @@ class modDoliField extends DolibarrModules
 		$this->descriptionlong = "ModuleDoliFieldDesc";
 		$this->editor_name = 'doliFarm.com';
 		$this->editor_url = 'https://www.dolifarm.com';
-		$this->version = '0.2.0';
+		$this->version = '0.3.0';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		// Icon of the suite when doliFarm is installed
 		$this->picto = (function_exists('dolifarm_get_fa_icon') ? dolifarm_get_fa_icon('dolifield') : 'fa-satellite-dish');
@@ -106,7 +106,9 @@ class modDoliField extends DolibarrModules
 			array('data' => 'dolifarmplot@dolifarm:+dolifieldweather:Weather:dolifield@dolifield:$user->hasRight("dolifield", "read"):/dolifield/dolifield_plot_weather.php?id=__ID__'),
 		);
 		$this->dictionaries = array();
-		$this->boxes = array();
+		$this->boxes = array(
+			0 => array('file' => 'box_dolifield_weather.php@dolifield', 'note' => 'Weather of the next 48 hours', 'enabledbydefaulton' => 'Home'),
+		);
 		// Weather: weather points of the plots, history and updates from Copernicus ERA5-Land (needs the key of the
 		// Climate Data Store, set in the setup). Every hour: a request sent is checked at the next run.
 		$this->cronjobs = array(
@@ -118,6 +120,20 @@ class modDoliField extends DolibarrModules
 				'method' => 'cronUpdate',
 				'parameters' => '',
 				'comment' => 'Weather of the plots: history and updates from Copernicus ERA5-Land',
+				'frequency' => 1,
+				'unitfrequency' => 3600,
+				'status' => 1,
+				'test' => 'isModEnabled("dolifield")',
+				'priority' => 50,
+			),
+			1 => array(
+				'label' => 'DolifieldForecastJob',
+				'jobtype' => 'method',
+				'class' => '/dolifield/class/dolifieldweather.class.php',
+				'objectname' => 'DoliFieldWeather',
+				'method' => 'cronForecast',
+				'parameters' => '',
+				'comment' => 'Weather of the plots: forecasts of MET Norway (every 3 hours for each weather point)',
 				'frequency' => 1,
 				'unitfrequency' => 3600,
 				'status' => 1,

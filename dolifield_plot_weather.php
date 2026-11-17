@@ -63,6 +63,7 @@ $langs->loadLangs(array('dolifarm@dolifarm', 'dolifield@dolifield'));
 
 $id = GETPOSTINT('id');
 $ref = GETPOST('ref', 'alpha');
+$action = GETPOST('action', 'aZ09');
 
 if (!isModEnabled('dolifarm') || !isModEnabled('dolifield')) {
 	accessforbidden();
@@ -79,6 +80,30 @@ if ($object->fetch($id, $ref) <= 0) {
 dolifarmCheckSocAccess($user, $object);
 
 $weather = new DoliFieldWeather($db);
+
+
+/*
+ * Actions
+ */
+
+// Forecast asked now, if the source allows it (Expires)
+if ($action == 'forecast' && $user->hasRight('dolifield', 'weather', 'write')) {
+	$points = $weather->getPlotStations((int) $object->id);
+	if (count($points)) {
+		if ($points[0]['forecast_expires'] > dol_now()) {
+			setEventMessages($langs->trans('WeatherForecastNotYet', dol_print_date($points[0]['forecast_expires'], 'hour', 'tzuserrel')), null, 'warnings');
+		} else {
+			$nb = $weather->updateForecast($points[0]);
+			if ($nb < 0) {
+				setEventMessages($weather->error, null, 'errors');
+			} else {
+				setEventMessages($nb > 0 ? $langs->trans('WeatherForecastLoaded', $nb) : $langs->trans('WeatherForecastNotModified'), null, 'mesgs');
+			}
+		}
+	}
+	header('Location: '.$_SERVER['PHP_SELF'].'?id='.((int) $object->id));
+	exit;
+}
 
 
 /*
@@ -108,7 +133,7 @@ if ($station !== null) {
 	// Weather point
 	print '<br><table class="border centpercent tableforfield">';
 	print '<tr><td class="titlefield">'.$langs->trans('WeatherPoint').'</td><td>'.dol_escape_htmltag($station['label']);
-	print ' <span class="opacitymedium">('.$langs->trans('WeatherDistance', price(round($station['distance_km'], 1))).')</span></td></tr>';
+	print ' <span class="opacitymedium">('.$langs->trans('WeatherDistance', DoliFieldWeather::num($station['distance_km'])).')</span></td></tr>';
 	print '<tr><td>'.$langs->trans('WeatherSource').'</td><td>'.$langs->trans('WeatherSource_'.$station['source']).'</td></tr>';
 	print '<tr><td>'.$langs->trans('WeatherDataPeriod').'</td><td>';
 	if ($station['data_to'] !== '') {
@@ -121,7 +146,96 @@ if ($station !== null) {
 		print '<span class="opacitymedium">'.$langs->trans('WeatherHistoryTodo').'</span>';
 	}
 	print '</td></tr>';
+	print '<tr><td>'.$langs->trans('WeatherForecast').'</td><td>';
+	if ($station['forecast_run']) {
+		print $langs->trans('WeatherForecastRun', dol_print_date($station['forecast_run'], 'dayhour', 'tzuserrel'));
+	} else {
+		print '<span class="opacitymedium">'.$langs->trans('WeatherForecastTodo').'</span>';
+	}
+	if ($station['forecast_error'] !== '') {
+		print ' <span class="error">'.dol_escape_htmltag($station['forecast_error']).'</span>';
+	}
+	if ($user->hasRight('dolifield', 'weather', 'write')) {
+		print ' <a class="butActionSmall" href="'.dol_escape_htmltag($_SERVER['PHP_SELF'].'?id='.((int) $object->id).'&action=forecast&token='.newToken()).'">'.$langs->trans('WeatherForecastUpdate').'</a>';
+	}
+	print '</td></tr>';
 	print '</table>';
+
+	// Forecast: next 48 hours every 3 hours, windows for the treatments, next days
+	$now = dol_now();
+	$start = (int) (ceil($now / 3600) * 3600);
+	$hours = array_filter($weather->getBestHours((int) $station['id'], $start, $start + 51 * 3600), static function (array $h): bool {
+		return $h['kind'] == DoliFieldWeather::KIND_FORECAST;
+	});
+	if (count($hours)) {
+		$limit = DoliFieldWeather::thresholds();
+		print '<br>';
+		print load_fiche_titre($langs->trans('WeatherNext48h'), '', '');
+		print '<div class="div-table-responsive">';
+		print '<table class="noborder centpercent">';
+		print '<tr class="liste_titre"><th>'.$langs->trans('Date').'</th><th></th><th class="right">'.$langs->trans('WeatherTemp').'</th>';
+		print '<th class="right">'.$langs->trans('WeatherRh').'</th><th class="right">'.$langs->trans('WeatherWindSpeed').'</th>';
+		print '<th class="right">'.$langs->trans('WeatherPrecip3h').'</th></tr>';
+		for ($time = $start; $time < $start + 48 * 3600; $time += 3 * 3600) {
+			if (!isset($hours[$time])) {
+				continue;
+			}
+			$h = $hours[$time];
+			$rain = null;
+			for ($k = 1; $k <= 3; $k++) {
+				if (isset($hours[$time + $k * 3600]) && $hours[$time + $k * 3600]['precip'] !== null) {
+					$rain = (float) $rain + $hours[$time + $k * 3600]['precip'];
+				}
+			}
+			// Arrow towards where the wind goes
+			$dir = ($h['dir'] !== null ? ' <span class="fas fa-long-arrow-alt-down" style="transform: rotate('.((int) round($h['dir'])).'deg)" title="'.((int) round($h['dir'])).'&deg;"></span>' : '');
+			print '<tr class="oddeven"><td class="nowraponall">'.dol_print_date($time, 'dayhourreduceformat', 'tzuserrel').'</td>';
+			print '<td>'.DoliFieldWeather::symbolIcon($h['symbol']).'</td>';
+			print '<td class="right">'.($h['temp'] === null ? '' : DoliFieldWeather::num($h['temp']).' &deg;C').'</td>';
+			print '<td class="right">'.($h['rh'] === null ? '' : DoliFieldWeather::num($h['rh'], 0).' %').'</td>';
+			print '<td class="right nowraponall'.($h['wind'] !== null && $h['wind'] > $limit['wind'] ? ' warning' : '').'">'.($h['wind'] === null ? '' : DoliFieldWeather::num($h['wind']).' m/s').$dir.'</td>';
+			print '<td class="right">'.($rain === null ? '' : DoliFieldWeather::num($rain).' mm').'</td>';
+			print '</tr>';
+		}
+		print '</table></div>';
+
+		// Windows suited to the treatments
+		$windows = $weather->getTreatmentWindows((int) $station['id'], 48);
+		print '<div class="small" style="margin-top: 6px">'.img_picto('', 'fa-spray-can', 'class="pictofixedwidth"').'<strong>'.$langs->trans('WeatherWindows').'</strong>: ';
+		if (count($windows)) {
+			$list = array();
+			foreach ($windows as $w) {
+				$list[] = dol_print_date($w['from'], 'dayhourreduceformat', 'tzuserrel').' - '.dol_print_date($w['to'], 'hour', 'tzuserrel');
+			}
+			print implode('; ', $list);
+		} else {
+			print '<span class="opacitymedium">'.$langs->trans('WeatherNoWindow').'</span>';
+		}
+		print ' <span class="opacitymedium">('.$langs->trans('WeatherWindowRule', DoliFieldWeather::num($limit['wind']), DoliFieldWeather::num($limit['temp']), $limit['rainhours'], DoliFieldWeather::num($limit['rain'])).')</span></div>';
+
+		// Next days
+		$days = $weather->getForecastDays((int) $station['id']);
+		if (count($days)) {
+			print '<br>';
+			print load_fiche_titre($langs->trans('WeatherNextDays'), '', '');
+			print '<div class="div-table-responsive">';
+			print '<table class="noborder centpercent">';
+			print '<tr class="liste_titre"><th>'.$langs->trans('Date').'</th><th></th><th class="right">'.$langs->trans('WeatherTmin').'</th>';
+			print '<th class="right">'.$langs->trans('WeatherTmax').'</th><th class="right">'.$langs->trans('WeatherPrecip').'</th>';
+			print '<th class="right">'.$langs->trans('WeatherWindMaxShort').'</th></tr>';
+			foreach ($days as $day => $d) {
+				$ts = dol_stringtotime($day.' 12:00:00', 0);
+				print '<tr class="oddeven"><td>'.dol_print_date($ts, 'daytext').'</td><td>'.DoliFieldWeather::symbolIcon($d['symbol']).'</td>';
+				print '<td class="right'.($d['tmin'] !== null && $d['tmin'] <= 0 ? ' error' : '').'">'.($d['tmin'] === null ? '' : DoliFieldWeather::num($d['tmin']).' &deg;C').'</td>';
+				print '<td class="right">'.($d['tmax'] === null ? '' : DoliFieldWeather::num($d['tmax']).' &deg;C').'</td>';
+				print '<td class="right">'.($d['precip'] === null ? '' : DoliFieldWeather::num($d['precip']).' mm').'</td>';
+				print '<td class="right">'.($d['wind_max'] === null ? '' : DoliFieldWeather::num($d['wind_max']).' m/s').'</td></tr>';
+			}
+			print '</table></div>';
+			print '<div class="opacitymedium small">'.$langs->trans('WeatherNextDaysHelp').'</div>';
+		}
+		print '<div class="opacitymedium small">'.$langs->trans('WeatherAttributionMetno').'</div>';
+	}
 }
 
 if ($station !== null && $station['data_to'] !== '') {
@@ -143,12 +257,12 @@ if ($station !== null && $station['data_to'] !== '') {
 		$from = dol_print_date(dol_time_plus_duree($lastts, -($nbdays - 1), 'd'), '%Y-%m-%d', 'gmt');
 		$period = $weather->getPeriodPrecip($stationid, $from, $lastday, $normfrom, $normto);
 		print '<tr class="oddeven"><td>'.$langs->trans('WeatherLastDays', $nbdays).'</td>';
-		print '<td class="right">'.($period['precip'] === null ? '' : price(round($period['precip'])).' mm').'</td>';
-		print '<td class="right">'.($period['normal'] === null ? '' : price(round($period['normal'])).' mm').'</td>';
+		print '<td class="right">'.($period['precip'] === null ? '' : DoliFieldWeather::num($period['precip'], 0).' mm').'</td>';
+		print '<td class="right">'.($period['normal'] === null ? '' : DoliFieldWeather::num($period['normal'], 0).' mm').'</td>';
 		print '<td class="right">';
 		if ($period['precip'] !== null && $period['normal'] !== null && $period['normal'] > 0) {
 			$diff = ($period['precip'] - $period['normal']) / $period['normal'] * 100;
-			print '<span class="'.($diff < -20 ? 'error' : ($diff > 20 ? 'ok' : '')).'">'.($diff > 0 ? '+' : '').price(round($diff)).' %'.'</span>';
+			print '<span class="'.($diff < -20 ? 'error' : ($diff > 20 ? 'ok' : '')).'">'.($diff > 0 ? '+' : '').DoliFieldWeather::num($diff, 0).' %'.'</span>';
 		}
 		print '</td></tr>';
 	}
@@ -166,13 +280,13 @@ if ($station !== null && $station['data_to'] !== '') {
 	print '<th class="right">'.$langs->trans('WeatherSoilWater').'</th></tr>';
 	foreach ($weather->getLastDays($stationid, 14) as $day) {
 		print '<tr class="oddeven"><td>'.dol_print_date(dol_stringtotime($day['day'].' 00:00:00', 1), 'daytext', 'gmt').'</td>';
-		print '<td class="right">'.($day['tmin'] === null ? '' : price(round((float) $day['tmin'], 1)).' °C').'</td>';
-		print '<td class="right">'.($day['tmax'] === null ? '' : price(round((float) $day['tmax'], 1)).' °C').'</td>';
-		print '<td class="right">'.($day['rh_mean'] === null ? '' : price(round((float) $day['rh_mean'])).' %').'</td>';
-		print '<td class="right">'.($day['precip'] === null ? '' : price(round((float) $day['precip'], 1)).' mm').'</td>';
-		print '<td class="right">'.($day['wind_mean'] === null ? '' : price(round((float) $day['wind_mean'], 1)).' m/s').'</td>';
-		print '<td class="right">'.($day['radiation'] === null ? '' : price(round((float) $day['radiation'], 1)).' MJ/m²').'</td>';
-		print '<td class="right">'.($day['soil_water'] === null ? '' : price(round((float) $day['soil_water'] * 100)).' %').'</td>';
+		print '<td class="right">'.($day['tmin'] === null ? '' : DoliFieldWeather::num((float) $day['tmin']).' °C').'</td>';
+		print '<td class="right">'.($day['tmax'] === null ? '' : DoliFieldWeather::num((float) $day['tmax']).' °C').'</td>';
+		print '<td class="right">'.($day['rh_mean'] === null ? '' : DoliFieldWeather::num((float) $day['rh_mean'], 0).' %').'</td>';
+		print '<td class="right">'.($day['precip'] === null ? '' : DoliFieldWeather::num((float) $day['precip']).' mm').'</td>';
+		print '<td class="right">'.($day['wind_mean'] === null ? '' : DoliFieldWeather::num((float) $day['wind_mean']).' m/s').'</td>';
+		print '<td class="right">'.($day['radiation'] === null ? '' : DoliFieldWeather::num((float) $day['radiation']).' MJ/m²').'</td>';
+		print '<td class="right">'.($day['soil_water'] === null ? '' : DoliFieldWeather::num((float) $day['soil_water'] * 100, 0).' %').'</td>';
 		print '</tr>';
 	}
 	print '</table></div>';
@@ -215,12 +329,12 @@ if ($station !== null && $station['data_to'] !== '') {
 		$daysinmonth = (int) gmdate('t', gmmktime(0, 0, 0, $mo, 1, (int) substr($ym, 0, 4)));
 		$partial = ($m['days'] < $daysinmonth);
 		print '<tr class="oddeven"><td>'.dol_print_date(dol_mktime(12, 0, 0, $mo, 1, (int) substr($ym, 0, 4)), '%B %Y').($partial ? ' <span class="opacitymedium small">('.$langs->trans('WeatherPartialMonth', $m['days']).')</span>' : '').'</td>';
-		print '<td class="right">'.($m['precip'] === null ? '' : price(round($m['precip'])).' mm').'</td>';
-		print '<td class="right opacitymedium">'.($n && $n['np'] ? price(round($n['precip'] / $n['np'])).' mm' : '').'</td>';
-		print '<td class="right">'.($m['tmin'] === null ? '' : price(round($m['tmin'], 1)).' °C').'</td>';
-		print '<td class="right opacitymedium">'.($n && $n['nt'] ? price(round($n['tmin'] / $n['nt'], 1)).' °C' : '').'</td>';
-		print '<td class="right">'.($m['tmax'] === null ? '' : price(round($m['tmax'], 1)).' °C').'</td>';
-		print '<td class="right opacitymedium">'.($n && $n['nt'] ? price(round($n['tmax'] / $n['nt'], 1)).' °C' : '').'</td>';
+		print '<td class="right">'.($m['precip'] === null ? '' : DoliFieldWeather::num($m['precip'], 0).' mm').'</td>';
+		print '<td class="right opacitymedium">'.($n && $n['np'] ? DoliFieldWeather::num($n['precip'] / $n['np'], 0).' mm' : '').'</td>';
+		print '<td class="right">'.($m['tmin'] === null ? '' : DoliFieldWeather::num($m['tmin']).' °C').'</td>';
+		print '<td class="right opacitymedium">'.($n && $n['nt'] ? DoliFieldWeather::num($n['tmin'] / $n['nt']).' °C' : '').'</td>';
+		print '<td class="right">'.($m['tmax'] === null ? '' : DoliFieldWeather::num($m['tmax']).' °C').'</td>';
+		print '<td class="right opacitymedium">'.($n && $n['nt'] ? DoliFieldWeather::num($n['tmax'] / $n['nt']).' °C' : '').'</td>';
 		print '</tr>';
 	}
 	print '</table></div>';
@@ -251,9 +365,9 @@ if ($station !== null && $station['data_to'] !== '') {
 	foreach ($years as $y => $yd) {
 		$daysinyear = ((int) gmdate('t', gmmktime(0, 0, 0, 2, 1, $y)) == 29 ? 366 : 365);
 		print '<tr class="oddeven"><td>'.$y.'</td>';
-		print '<td class="right">'.($yd['precipdays'] ? price(round($yd['precip'])).' mm' : '').'</td>';
-		print '<td class="right">'.($yd['nt'] ? price(round($yd['tmin'] / $yd['nt'], 1)).' °C' : '').'</td>';
-		print '<td class="right">'.($yd['nt'] ? price(round($yd['tmax'] / $yd['nt'], 1)).' °C' : '').'</td>';
+		print '<td class="right">'.($yd['precipdays'] ? DoliFieldWeather::num($yd['precip'], 0).' mm' : '').'</td>';
+		print '<td class="right">'.($yd['nt'] ? DoliFieldWeather::num($yd['tmin'] / $yd['nt']).' °C' : '').'</td>';
+		print '<td class="right">'.($yd['nt'] ? DoliFieldWeather::num($yd['tmax'] / $yd['nt']).' °C' : '').'</td>';
 		print '<td class="opacitymedium small">'.($yd['days'] < $daysinyear ? $langs->trans('WeatherPartialYear', $yd['days']) : '').'</td>';
 		print '</tr>';
 	}

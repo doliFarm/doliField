@@ -25,6 +25,11 @@
  * the plot, requested as CSV through the API of the Climate Data Store (account and personal access token of
  * doliFarm, set in the setup). The request is asynchronous: the scheduled job sends it, checks it at the next runs,
  * downloads the file, keeps it in the documents and loads it.
+ *
+ * The forecasts come from MET Norway Locationforecast 2.0 (licence CC BY 4.0, no key, User-Agent with a contact and
+ * cache headers required), for the same weather points: hourly for about 2.5 days, then every 6 hours up to 9 days.
+ * The conditions of a period (treatment, operation) are read from the best values of each hour: observed, then
+ * reanalysis, then the last forecast made before the hour.
  */
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
@@ -54,6 +59,13 @@ class DoliFieldWeather
 	const CDS_DATASET = 'reanalysis-era5-land-timeseries';
 	const CDS_DATASET_PAGE = 'https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land-timeseries';
 	const CDS_LICENCE = 'cc-by';
+
+	/** MET Norway Locationforecast 2.0, complete (dew point included) */
+	const METNO_URL = 'https://api.met.no/weatherapi/locationforecast/2.0/complete';
+	/** Hours between two forecasts of a weather point (the source updates them about every hour) */
+	const FORECAST_EVERY_HOURS = 3;
+	/** Forecasts asked by one run of the scheduled job */
+	const MAX_FORECASTS_PER_RUN = 50;
 
 	/** ERA5-Land is published with a delay of about 6 days: requests stop 7 days before today */
 	const ERA5LAND_DELAY_DAYS = 7;
@@ -294,7 +306,8 @@ class DoliFieldWeather
 
 		$sql = "SELECT s.rowid, s.source, s.source_code, s.label, s.latitude, s.longitude, s.elevation, s.status, s.history_status,";
 		$sql .= " s.history_job, s.history_job_from, s.history_job_to, s.data_from, s.data_to, s.date_last_request, s.date_last_load,";
-		$sql .= " s.nb_errors, s.last_error, COUNT(p.rowid) as nb_plots";
+		$sql .= " s.nb_errors, s.last_error, s.forecast_run, s.forecast_expires, s.forecast_modified, s.date_last_forecast, s.forecast_error,";
+		$sql .= " COUNT(p.rowid) as nb_plots";
 		$sql .= " FROM ".$this->db->prefix()."dolifield_weather_station as s";
 		$sql .= " LEFT JOIN ".$this->db->prefix()."dolifield_weather_plot as p ON p.fk_station = s.rowid";
 		$sql .= " WHERE s.entity = ".((int) $conf->entity);
@@ -302,7 +315,8 @@ class DoliFieldWeather
 			$sql .= " AND s.status = 1";
 		}
 		$sql .= " GROUP BY s.rowid, s.source, s.source_code, s.label, s.latitude, s.longitude, s.elevation, s.status, s.history_status,";
-		$sql .= " s.history_job, s.history_job_from, s.history_job_to, s.data_from, s.data_to, s.date_last_request, s.date_last_load, s.nb_errors, s.last_error";
+		$sql .= " s.history_job, s.history_job_from, s.history_job_to, s.data_from, s.data_to, s.date_last_request, s.date_last_load, s.nb_errors, s.last_error,";
+		$sql .= " s.forecast_run, s.forecast_expires, s.forecast_modified, s.date_last_forecast, s.forecast_error";
 		$sql .= " ORDER BY s.source_code";
 		$resql = $this->db->query($sql);
 		if (!$resql) {
@@ -330,6 +344,11 @@ class DoliFieldWeather
 				'date_last_load' => ($obj->date_last_load ? $this->db->jdate($obj->date_last_load) : 0),
 				'nb_errors' => (int) $obj->nb_errors,
 				'last_error' => (string) $obj->last_error,
+				'forecast_run' => ($obj->forecast_run ? $this->db->jdate($obj->forecast_run, true) : 0),
+				'forecast_expires' => ($obj->forecast_expires ? $this->db->jdate($obj->forecast_expires, true) : 0),
+				'forecast_modified' => (string) $obj->forecast_modified,
+				'date_last_forecast' => ($obj->date_last_forecast ? $this->db->jdate($obj->date_last_forecast) : 0),
+				'forecast_error' => (string) $obj->forecast_error,
 				'nb_plots' => (int) $obj->nb_plots,
 			);
 		}
@@ -1314,6 +1333,697 @@ class DoliFieldWeather
 		}
 		$this->updateStation($station['id'], array('history_status' => self::HISTORY_ERROR, 'history_job' => null,
 			'nb_errors' => $nberrors, 'last_error' => dol_trunc($message, 1000)));
+	}
+
+
+	/*
+	 * Forecasts of MET Norway
+	 */
+
+	/**
+	 * User-Agent of the calls to MET Norway: the terms of service ask for the application and a contact
+	 *
+	 * @return	string
+	 */
+	public static function metnoUserAgent(): string
+	{
+		$contact = trim(getDolGlobalString('DOLIFIELD_WEATHER_CONTACT'));
+		return 'doliField/0.3 (Dolibarr; https://www.dolifarm.com'.($contact !== '' ? '; '.preg_replace('/[^\w@.:\/+\- ]/u', '', $contact) : '').')';
+	}
+
+	/**
+	 * Call of MET Norway for the forecast of a weather point
+	 *
+	 * @param	array<string,mixed>		$station	Weather point
+	 * @param	int						$httpcode	HTTP code of the answer
+	 * @param	array<string,string>	$headers	Headers of the answer (lower case names)
+	 * @return	string|false						Body of the answer ('' for 304), false if error (message in $this->error)
+	 */
+	private function metnoCall(array $station, int &$httpcode = 0, array &$headers = array())
+	{
+		global $langs;
+
+		// No more than 4 decimals (terms of service): the grid point has 1 or 2
+		$url = self::METNO_URL.'?lat='.number_format((float) $station['lat'], 4, '.', '').'&lon='.number_format((float) $station['lon'], 4, '.', '');
+		$headers = array();
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+		curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+		curl_setopt($ch, CURLOPT_ENCODING, '');
+		if (getDolGlobalString('MAIN_CURL_DISABLE_VERIFYPEER')) {
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+		}
+		$send = array('Accept: application/json');
+		if ($station['forecast_modified'] !== '') {
+			$send[] = 'If-Modified-Since: '.$station['forecast_modified'];
+		}
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $send);
+		curl_setopt($ch, CURLOPT_USERAGENT, self::metnoUserAgent());
+		curl_setopt($ch, CURLOPT_HEADERFUNCTION, static function ($ch, string $line) use (&$headers): int {
+			$pos = strpos($line, ':');
+			if ($pos !== false) {
+				$headers[strtolower(trim(substr($line, 0, $pos)))] = trim(substr($line, $pos + 1));
+			}
+			return strlen($line);
+		});
+		$response = curl_exec($ch);
+		$httpcode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$curlerror = curl_error($ch);
+		unset($ch);
+
+		dol_syslog(__METHOD__.' '.$station['code'].' http_code='.$httpcode);
+		if ($response === false || $httpcode == 0) {
+			$this->error = $langs->trans('WeatherMetnoError', $curlerror);
+			return false;
+		}
+		if ($httpcode == 304) {
+			return '';
+		}
+		// 203: the version of the service is deprecated, the answer is still valid
+		if ($httpcode != 200 && $httpcode != 203) {
+			$this->error = $langs->trans('WeatherMetnoError', 'HTTP '.$httpcode);
+			return false;
+		}
+		if ($httpcode == 203) {
+			dol_syslog(__METHOD__.' MET Norway answers 203: the version of Locationforecast is deprecated', LOG_WARNING);
+		}
+		return (string) $response;
+	}
+
+	/**
+	 * Ask and load the forecast of a weather point
+	 *
+	 * @param	array<string,mixed>	$station	Weather point
+	 * @return	int		Hours loaded, 0 if not modified, -1 if error, -2 if the source asks to slow down (429)
+	 */
+	public function updateForecast(array $station): int
+	{
+		global $conf, $langs;
+
+		$now = dol_now();
+		$httpcode = 0;
+		$headers = array();
+		$body = $this->metnoCall($station, $httpcode, $headers);
+		$fields = array('date_last_forecast' => $this->db->idate($now));
+		$expires = (isset($headers['expires']) ? strtotime($headers['expires']) : false);
+		// Without Expires, not before the next run
+		$fields['forecast_expires'] = $this->db->idate($expires !== false ? $expires : $now + 1800, 'gmt');
+		if ($body === false) {
+			$fields['forecast_error'] = dol_trunc($this->error, 1000);
+			$this->updateStation($station['id'], $fields);
+			return ($httpcode == 429 ? -2 : -1);
+		}
+		if ($body === '') {
+			$fields['forecast_error'] = null;
+			$this->updateStation($station['id'], $fields);
+			return 0;
+		}
+		$data = json_decode($body, true);
+		$series = (is_array($data) ? ($data['properties']['timeseries'] ?? null) : null);
+		if (!is_array($series) || !count($series)) {
+			$this->error = $langs->trans('WeatherMetnoError', 'JSON');
+			$fields['forecast_error'] = $this->error;
+			$this->updateStation($station['id'], $fields);
+			return -1;
+		}
+		$run = strtotime((string) ($data['properties']['meta']['updated_at'] ?? ''));
+		$run = ($run !== false ? $run : $now);
+
+		// Raw answer kept in the documents (forecasts cannot be downloaded again)
+		$dir = $conf->dolifield->dir_output.'/weather/metno/'.dol_sanitizeFileName($station['code']).'/'.gmdate('Y-m', $run);
+		dol_mkdir($dir);
+		$gz = gzencode($body, 9);
+		if ($gz === false || file_put_contents($dir.'/metno_'.gmdate('Ymd\THi', $run).'.json.gz', $gz) === false) {
+			dol_syslog(__METHOD__.' raw forecast not saved in '.$dir, LOG_ERR);
+		}
+
+		$nb = $this->importForecast($station, $series, $run);
+		if ($nb < 0) {
+			$fields['forecast_error'] = dol_trunc($this->error, 1000);
+			$this->updateStation($station['id'], $fields);
+			return -1;
+		}
+		$fields['forecast_run'] = $this->db->idate($run, 'gmt');
+		$fields['forecast_modified'] = (string) ($headers['last-modified'] ?? '');
+		$fields['forecast_error'] = null;
+		if ($station['elevation'] === null && isset($data['geometry']['coordinates'][2]) && is_numeric($data['geometry']['coordinates'][2])) {
+			$fields['elevation'] = (float) $data['geometry']['coordinates'][2];
+		}
+		$this->updateStation($station['id'], $fields);
+		return $nb;
+	}
+
+	/**
+	 * Load the time series of a forecast: each forecast replaces the hours from its first one
+	 *
+	 * Instantaneous values at the time of the step; the precipitation of the next hour (or of the next 6 hours when
+	 * the steps are of 6 hours) is put on the hour where it ends, as for the reanalysis.
+	 *
+	 * @param	array<string,mixed>				$station	Weather point
+	 * @param	array<int,array<string,mixed>>	$series		properties.timeseries of the answer
+	 * @param	int								$run		Time of the forecast
+	 * @return	int		Number of hours loaded, <0 if error
+	 */
+	public function importForecast(array $station, array $series, int $run): int
+	{
+		$num = static function ($value): ?float {
+			return (is_numeric($value) ? (float) $value : null);
+		};
+		$rows = array();
+		$empty = array('temp' => null, 'dew' => null, 'rh' => null, 'precip' => null, 'ph' => null, 'wind' => null, 'dir' => null, 'cloud' => null, 'symbol' => null);
+		foreach ($series as $step) {
+			$time = strtotime((string) ($step['time'] ?? ''));
+			if ($time === false) {
+				continue;
+			}
+			$instant = $step['data']['instant']['details'] ?? array();
+			$row = $rows[$time] ?? $empty;
+			$row['temp'] = $num($instant['air_temperature'] ?? null);
+			$row['dew'] = $num($instant['dew_point_temperature'] ?? null);
+			$row['rh'] = $num($instant['relative_humidity'] ?? null);
+			$row['wind'] = $num($instant['wind_speed'] ?? null);
+			$row['dir'] = $num($instant['wind_from_direction'] ?? null);
+			$row['cloud'] = $num($instant['cloud_area_fraction'] ?? null);
+			$precip = null;
+			$period = 0;
+			if (isset($step['data']['next_1_hours'])) {
+				$row['symbol'] = (string) ($step['data']['next_1_hours']['summary']['symbol_code'] ?? '');
+				$precip = $num($step['data']['next_1_hours']['details']['precipitation_amount'] ?? null);
+				$period = 1;
+			} elseif (isset($step['data']['next_6_hours'])) {
+				$row['symbol'] = (string) ($step['data']['next_6_hours']['summary']['symbol_code'] ?? '');
+				$precip = $num($step['data']['next_6_hours']['details']['precipitation_amount'] ?? null);
+				$period = 6;
+			}
+			$rows[$time] = $row;
+			if ($precip !== null) {
+				$end = $time + $period * 3600;
+				$rows[$end] = $rows[$end] ?? $empty;
+				$rows[$end]['precip'] = $precip;
+				$rows[$end]['ph'] = $period;
+			}
+		}
+		if (!count($rows)) {
+			return 0;
+		}
+		ksort($rows);
+		$first = (int) array_key_first($rows);
+		$stationid = (int) $station['id'];
+		$prefix = $this->db->prefix();
+
+		// The precipitation of the hour that ends at the first step came with the previous forecast
+		if ($rows[$first]['precip'] === null) {
+			$sql = "SELECT precip, precip_hours FROM ".$prefix."dolifield_weather_hourly WHERE fk_station = ".$stationid." AND kind = ".self::KIND_FORECAST;
+			$sql .= " AND date_utc = '".$this->db->idate($first, 'gmt')."'";
+			$resql = $this->db->query($sql);
+			if ($resql && ($obj = $this->db->fetch_object($resql)) && $obj->precip !== null) {
+				$rows[$first]['precip'] = (float) $obj->precip;
+				$rows[$first]['ph'] = (int) $obj->precip_hours;
+			}
+		}
+
+		$this->db->begin();
+		$sql = "DELETE FROM ".$prefix."dolifield_weather_hourly WHERE fk_station = ".$stationid." AND kind = ".self::KIND_FORECAST;
+		$sql .= " AND date_utc >= '".$this->db->idate($first, 'gmt')."'";
+		$ok = (bool) $this->db->query($sql);
+		$values = array();
+		$runsql = "'".$this->db->idate($run, 'gmt')."'";
+		foreach ($rows as $time => $r) {
+			$values[] = "(".$stationid.", ".self::KIND_FORECAST.", '".$this->db->idate($time, 'gmt')."', "
+				.self::sqlNum($r['temp']).", ".self::sqlNum($r['dew']).", ".self::sqlNum($r['rh']).", ".self::sqlNum($r['precip']).", "
+				.self::sqlNum($r['wind']).", ".self::sqlNum($r['dir']).", ".self::sqlNum($r['cloud']).", "
+				.($r['symbol'] ? "'".$this->db->escape(substr($r['symbol'], 0, 32))."'" : "NULL").", "
+				.($r['ph'] ? (int) $r['ph'] : "NULL").", ".$runsql.")";
+		}
+		foreach (array_chunk($values, 200) as $chunk) {
+			if ($ok) {
+				$sql = "INSERT INTO ".$prefix."dolifield_weather_hourly (fk_station, kind, date_utc, temp, dewpoint, rh, precip, wind_speed, wind_dir, cloud, symbol_code, precip_hours, run_utc)";
+				$sql .= " VALUES ".implode(', ', $chunk);
+				$ok = (bool) $this->db->query($sql);
+			}
+		}
+		if (!$ok) {
+			$this->error = $this->db->lasterror();
+			$this->db->rollback();
+			return -1;
+		}
+		$this->db->commit();
+		return count($rows);
+	}
+
+	/**
+	 * Scheduled job: forecasts of the weather points used by plots
+	 *
+	 * Each point is asked again after FORECAST_EVERY_HOURS hours and never before the time given by the source
+	 * (Expires); If-Modified-Since avoids downloading the same forecast twice.
+	 *
+	 * @return	int		0 if OK, <>0 if error (message in $this->error and $this->output)
+	 */
+	public function cronForecast(): int
+	{
+		global $langs;
+
+		$langs->loadLangs(array('errors', 'dolifield@dolifield'));
+		$this->output = '';
+		$this->error = '';
+
+		if ($this->syncPlots() < 0) {
+			$this->output = $this->error;
+			return 1;
+		}
+		$stations = $this->getStations(true);
+		if ($stations === false) {
+			$this->output = $this->error;
+			return 1;
+		}
+		$now = dol_now();
+		$lines = array();
+		$nberror = 0;
+		$nbcalls = 0;
+		foreach ($stations as $station) {
+			if ($nbcalls >= self::MAX_FORECASTS_PER_RUN) {
+				break;
+			}
+			// 10 minutes of margin: the job runs every hour
+			if ($station['forecast_expires'] > $now || $station['date_last_forecast'] > $now - self::FORECAST_EVERY_HOURS * 3600 + 600) {
+				continue;
+			}
+			$nbcalls++;
+			$nb = $this->updateForecast($station);
+			if ($nb < 0) {
+				$nberror++;
+				$lines[] = $station['label'].': '.$this->error;
+				if ($nb == -2) {
+					break;
+				}
+			} else {
+				$lines[] = $station['label'].': '.($nb > 0 ? $langs->trans('WeatherForecastLoaded', $nb) : $langs->trans('WeatherForecastNotModified'));
+			}
+		}
+		$this->output = $langs->trans('WeatherPoints', count($stations)).(count($lines) ? "\n".implode("\n", $lines) : '');
+		if ($nberror) {
+			$this->error = $this->output;
+		}
+		return ($nberror ? 1 : 0);
+	}
+
+
+	/*
+	 * Conditions of a period (treatments and operations)
+	 */
+
+	/**
+	 * Thresholds of the warnings for the treatments, from the setup
+	 *
+	 * @return	array{wind:float,rain:float,rainhours:int,temp:float}
+	 */
+	public static function thresholds(): array
+	{
+		$num = static function (string $name, float $default): float {
+			$value = str_replace(',', '.', getDolGlobalString($name));
+			return (is_numeric($value) ? (float) $value : $default);
+		};
+		return array(
+			'wind' => $num('DOLIFIELD_WEATHER_WIND_MAX', 5.0),
+			'rain' => $num('DOLIFIELD_WEATHER_RAIN_MM', 1.0),
+			'rainhours' => max(1, getDolGlobalInt('DOLIFIELD_WEATHER_RAIN_HOURS', 6)),
+			'temp' => $num('DOLIFIELD_WEATHER_TEMP_MAX', 30.0),
+		);
+	}
+
+	/**
+	 * Best hourly values of a weather point: for each hour the observed value, else the reanalysis, else the forecast
+	 *
+	 * @param	int		$stationid	Id of the point
+	 * @param	int		$from		First hour (timestamp)
+	 * @param	int		$to			Last hour (timestamp)
+	 * @return	array<int,array<string,mixed>>	By hour (timestamp UTC)
+	 */
+	public function getBestHours(int $stationid, int $from, int $to): array
+	{
+		$sql = "SELECT kind, date_utc, temp, rh, precip, precip_hours, wind_speed, wind_dir, cloud, symbol_code, run_utc";
+		$sql .= " FROM ".$this->db->prefix()."dolifield_weather_hourly";
+		$sql .= " WHERE fk_station = ".((int) $stationid);
+		$sql .= " AND date_utc >= '".$this->db->idate($from, 'gmt')."' AND date_utc <= '".$this->db->idate($to, 'gmt')."'";
+		$resql = $this->db->query($sql);
+		$rank = array(self::KIND_OBSERVED => 1, self::KIND_REANALYSIS => 2, self::KIND_FORECAST => 3);
+		$result = array();
+		if ($resql) {
+			while ($obj = $this->db->fetch_object($resql)) {
+				$time = (int) $this->db->jdate($obj->date_utc, true);
+				$kind = (int) $obj->kind;
+				if (isset($result[$time]) && $rank[$result[$time]['kind']] <= ($rank[$kind] ?? 9)) {
+					continue;
+				}
+				$result[$time] = array(
+					'kind' => $kind,
+					'temp' => ($obj->temp === null ? null : (float) $obj->temp),
+					'rh' => ($obj->rh === null ? null : (float) $obj->rh),
+					'precip' => ($obj->precip === null ? null : (float) $obj->precip),
+					'precip_hours' => ($obj->precip_hours === null ? 1 : (int) $obj->precip_hours),
+					'wind' => ($obj->wind_speed === null ? null : (float) $obj->wind_speed),
+					'dir' => ($obj->wind_dir === null ? null : (float) $obj->wind_dir),
+					'cloud' => ($obj->cloud === null ? null : (float) $obj->cloud),
+					'symbol' => (string) $obj->symbol_code,
+					'run' => ($obj->run_utc ? (int) $this->db->jdate($obj->run_utc, true) : 0),
+				);
+			}
+			$this->db->free($resql);
+		}
+		ksort($result);
+		return $result;
+	}
+
+	/**
+	 * Weather conditions of a plot in a period, and the precipitation of the hours after it
+	 *
+	 * @param	int		$plotid		Id of the plot of doliFarm
+	 * @param	int		$from		Start (timestamp)
+	 * @param	int		$to			End (timestamp, 0 = one hour from the start)
+	 * @param	?int	$afterhours	Hours after the end for the precipitation (null = setup)
+	 * @return	?array<string,mixed>	Conditions, null if the plot has no weather point or no data for the period
+	 */
+	public function getConditions(int $plotid, int $from, int $to = 0, ?int $afterhours = null): ?array
+	{
+		$points = $this->getPlotStations($plotid);
+		if (!count($points) || $from <= 0) {
+			return null;
+		}
+		$station = $points[0];
+		$afterhours = ($afterhours === null ? self::thresholds()['rainhours'] : max(0, $afterhours));
+		$h0 = (int) (floor($from / 3600) * 3600);
+		$h1 = max($h0 + 3600, (int) (ceil(max($from, $to) / 3600) * 3600));
+		$end = $h1 + $afterhours * 3600;
+		// The forecasts at 6 hours end up to 5 hours after the end of the hours after
+		$hours = $this->getBestHours((int) $station['id'], $h0, $end + 5 * 3600);
+
+		$c = array('station' => $station, 'from' => $h0, 'to' => $h1, 'after_hours' => $afterhours,
+			'temp_min' => null, 'temp_max' => null, 'temp_mean' => null, 'rh_mean' => null, 'wind_mean' => null, 'wind_max' => null,
+			'precip' => null, 'precip_after' => null, 'kinds' => array(), 'run' => 0, 'nb_hours' => 0);
+		$t = array();
+		$rh = array();
+		$wind = array();
+		$coveredto = $h1;
+		foreach ($hours as $time => $h) {
+			if ($time <= $h1) {
+				if ($h['temp'] !== null) {
+					$t[] = $h['temp'];
+					$c['nb_hours']++;
+					$c['kinds'][$h['kind']] = ($c['kinds'][$h['kind']] ?? 0) + 1;
+					if ($h['kind'] == self::KIND_FORECAST) {
+						$c['run'] = max($c['run'], $h['run']);
+					}
+				}
+				if ($h['rh'] !== null) {
+					$rh[] = $h['rh'];
+				}
+				if ($h['wind'] !== null) {
+					$wind[] = $h['wind'];
+				}
+			}
+			// Precipitation that ends at this hour: during the period, or in the hours after
+			if ($h['precip'] === null || $time <= $h0) {
+				continue;
+			}
+			$start = $time - $h['precip_hours'] * 3600;
+			if ($time <= $h1) {
+				$c['precip'] = ($c['precip'] ?? 0.0) + $h['precip'];
+			} elseif ($afterhours > 0 && $start < $end) {
+				$c['precip_after'] = ($c['precip_after'] ?? 0.0) + $h['precip'];
+				$coveredto = max($coveredto, $time);
+			}
+		}
+		// Steps of 6 hours (forecast beyond the first days): the nearest step within 3 hours
+		if (!count($t)) {
+			$near = $this->getBestHours((int) $station['id'], $h0 - 3 * 3600, $h1 + 3 * 3600);
+			$best = null;
+			foreach ($near as $time => $h) {
+				$distance = ($time < $h0 ? $h0 - $time : max(0, $time - $h1));
+				if ($h['temp'] !== null && ($best === null || $distance < $best[0])) {
+					$best = array($distance, $h);
+				}
+			}
+			if ($best === null) {
+				return null;
+			}
+			$h = $best[1];
+			$t[] = $h['temp'];
+			$c['nb_hours'] = 1;
+			$c['kinds'][$h['kind']] = 1;
+			$c['run'] = ($h['kind'] == self::KIND_FORECAST ? $h['run'] : 0);
+			if ($h['rh'] !== null) {
+				$rh[] = $h['rh'];
+			}
+			if ($h['wind'] !== null) {
+				$wind[] = $h['wind'];
+			}
+		}
+		// Hours after without data (end of the forecast, reanalysis not arrived yet): the value is not given
+		if ($afterhours > 0 && $coveredto < $end) {
+			$c['precip_after'] = null;
+		}
+		$c['temp_min'] = min($t);
+		$c['temp_max'] = max($t);
+		$c['temp_mean'] = array_sum($t) / count($t);
+		$c['rh_mean'] = (count($rh) ? array_sum($rh) / count($rh) : null);
+		$c['wind_mean'] = (count($wind) ? array_sum($wind) / count($wind) : null);
+		$c['wind_max'] = (count($wind) ? max($wind) : null);
+		return $c;
+	}
+
+	/**
+	 * Number in the format of the user, with at most the decimals given (no trailing zeros)
+	 *
+	 * @param	?float	$value		Value
+	 * @param	int		$decimals	Decimals
+	 * @return	string
+	 */
+	public static function num(?float $value, int $decimals = 1): string
+	{
+		if ($value === null) {
+			return '';
+		}
+		$value = round($value, $decimals);
+		$shown = (abs($value - round($value)) < 1e-9 ? 0 : $decimals);
+		return price($value, 0, '', 0, -1, $shown);
+	}
+
+	/**
+	 * Text of the conditions, as copied in the records of doliTrace
+	 *
+	 * @param	array<string,mixed>	$c			Conditions (getConditions())
+	 * @param	int					$maxlength	Maximum length (size of the field)
+	 * @return	string
+	 */
+	public static function formatConditions(array $c, int $maxlength = 255): string
+	{
+		global $langs;
+
+		$langs->load('dolifield@dolifield');
+		$n = array(self::class, 'num');
+		$parts = array();
+		$temp = $langs->transnoentities('WeatherCondTemp', $n($c['temp_mean']));
+		if (round($c['temp_max'] - $c['temp_min'], 1) >= 1) {
+			$temp .= ' ('.$n($c['temp_min']).'/'.$n($c['temp_max']).')';
+		}
+		$parts[] = $temp;
+		if ($c['rh_mean'] !== null) {
+			$parts[] = $langs->transnoentities('WeatherCondRh', $n($c['rh_mean'], 0));
+		}
+		if ($c['wind_mean'] !== null) {
+			$parts[] = $langs->transnoentities('WeatherCondWind', $n($c['wind_mean']), $n($c['wind_max']));
+		}
+		$parts[] = $langs->transnoentities('WeatherCondPrecip', $n($c['precip'] ?? 0.0));
+		if ($c['after_hours'] > 0 && $c['precip_after'] !== null) {
+			$parts[] = $langs->transnoentities('WeatherCondPrecipAfter', $c['after_hours'], $n($c['precip_after']));
+		}
+		$text = implode(', ', $parts);
+
+		// Source: the kind of most of the hours
+		$kinds = $c['kinds'];
+		arsort($kinds);
+		$kind = (int) array_key_first($kinds);
+		if ($kind == self::KIND_FORECAST) {
+			$source = $langs->transnoentities('WeatherCondSourceForecast', dol_print_date($c['run'], 'dayhour', 'tzuserrel'));
+			$short = $langs->transnoentities('WeatherCondSourceForecastShort');
+		} elseif ($kind == self::KIND_OBSERVED) {
+			$source = $langs->transnoentities('WeatherCondSourceObserved');
+			$short = $source;
+		} else {
+			$source = $langs->transnoentities('WeatherCondSourceReanalysis');
+			$short = $langs->transnoentities('WeatherCondSourceReanalysisShort');
+		}
+		$long = $text.'. '.$langs->transnoentities('WeatherCondSource', $source, $c['station']['label']);
+		if (dol_strlen($long) <= $maxlength) {
+			return $long;
+		}
+		$medium = $text.' ('.$short.')';
+		if (dol_strlen($medium) <= $maxlength) {
+			return $medium;
+		}
+		return dol_trunc($text, $maxlength, 'right', 'UTF-8', 1);
+	}
+
+	/**
+	 * Warnings on the conditions of a treatment of plant protection: wind, rain in the hours after, temperature
+	 *
+	 * @param	array<string,mixed>	$c	Conditions (getConditions())
+	 * @return	string[]				Translated warnings
+	 */
+	public static function conditionWarnings(array $c): array
+	{
+		global $langs;
+
+		$langs->load('dolifield@dolifield');
+		$limit = self::thresholds();
+		$warnings = array();
+		if ($c['wind_max'] !== null && $c['wind_max'] > $limit['wind']) {
+			$warnings[] = $langs->trans('WeatherWarnWind', self::num($c['wind_max']), self::num($limit['wind']));
+		}
+		$rain = (float) ($c['precip'] ?? 0) + (float) ($c['precip_after'] ?? 0);
+		if ($rain >= $limit['rain']) {
+			$warnings[] = $langs->trans('WeatherWarnRain', self::num($rain), $c['after_hours']);
+		}
+		if ($c['temp_max'] !== null && $c['temp_max'] > $limit['temp']) {
+			$warnings[] = $langs->trans('WeatherWarnTemp', self::num($c['temp_max']), self::num($limit['temp']));
+		}
+		return $warnings;
+	}
+
+	/**
+	 * Hours of the next days suited to the treatments: wind and temperature within the thresholds, no rain in the hour
+	 * and in the hours after
+	 *
+	 * @param	int		$stationid	Id of the point
+	 * @param	int		$hours		Hours from now
+	 * @return	array<int,array{from:int,to:int}>	Windows (start of the first and end of the last hour)
+	 */
+	public function getTreatmentWindows(int $stationid, int $hours = 48): array
+	{
+		$limit = self::thresholds();
+		$now = (int) (ceil(dol_now() / 3600) * 3600);
+		$data = $this->getBestHours($stationid, $now, $now + ($hours + 1 + $limit['rainhours']) * 3600);
+		$windows = array();
+		$current = null;
+		for ($time = $now; $time < $now + $hours * 3600; $time += 3600) {
+			$h = $data[$time] ?? null;
+			$ok = ($h !== null && $h['temp'] !== null && $h['wind'] !== null && $h['wind'] <= $limit['wind'] && $h['temp'] <= $limit['temp']);
+			if ($ok) {
+				// Rain of the hour and of the hours after, hourly data only (beyond, the steps are of 6 hours)
+				$rain = 0.0;
+				for ($k = 1; $k <= 1 + $limit['rainhours']; $k++) {
+					$next = $data[$time + $k * 3600] ?? null;
+					if ($next === null || $next['precip'] === null || $next['precip_hours'] != 1) {
+						$ok = false;
+						break;
+					}
+					$rain += $next['precip'];
+				}
+				$ok = ($ok && $rain < $limit['rain']);
+			}
+			if ($ok) {
+				if ($current === null) {
+					$current = array('from' => $time, 'to' => $time + 3600);
+				} else {
+					$current['to'] = $time + 3600;
+				}
+			} elseif ($current !== null) {
+				$windows[] = $current;
+				$current = null;
+			}
+		}
+		if ($current !== null) {
+			$windows[] = $current;
+		}
+		// Windows of at least 2 hours
+		return array_values(array_filter($windows, static function (array $w): bool {
+			return $w['to'] - $w['from'] >= 7200;
+		}));
+	}
+
+	/**
+	 * Forecast by local day: minimum and maximum of the values given, precipitation, wind, main symbol
+	 *
+	 * @param	int		$stationid	Id of the point
+	 * @return	array<string,array<string,mixed>>	By day YYYY-MM-DD (time zone of the user)
+	 */
+	public function getForecastDays(int $stationid): array
+	{
+		$now = dol_now();
+		$today = dol_mktime(0, 0, 0, (int) dol_print_date($now, '%m', 'tzuserrel'), (int) dol_print_date($now, '%d', 'tzuserrel'), (int) dol_print_date($now, '%Y', 'tzuserrel'), 'tzuserrel');
+		$sql = "SELECT date_utc, temp, precip, wind_speed, symbol_code FROM ".$this->db->prefix()."dolifield_weather_hourly";
+		$sql .= " WHERE fk_station = ".((int) $stationid)." AND kind = ".self::KIND_FORECAST;
+		$sql .= " AND date_utc >= '".$this->db->idate($today, 'gmt')."' ORDER BY date_utc";
+		$resql = $this->db->query($sql);
+		$days = array();
+		if ($resql) {
+			while ($obj = $this->db->fetch_object($resql)) {
+				$time = (int) $this->db->jdate($obj->date_utc, true);
+				$day = dol_print_date($time, '%Y-%m-%d', 'tzuserrel');
+				// Precipitation that ends at midnight belongs to the day before
+				$dayprecip = dol_print_date($time - 1, '%Y-%m-%d', 'tzuserrel');
+				if (!isset($days[$day])) {
+					$days[$day] = array('tmin' => null, 'tmax' => null, 'precip' => null, 'wind_max' => null, 'symbol' => '', 'symbolhour' => 99, 'nb' => 0);
+				}
+				if ($obj->temp !== null) {
+					$days[$day]['tmin'] = ($days[$day]['tmin'] === null ? (float) $obj->temp : min($days[$day]['tmin'], (float) $obj->temp));
+					$days[$day]['tmax'] = ($days[$day]['tmax'] === null ? (float) $obj->temp : max($days[$day]['tmax'], (float) $obj->temp));
+					$days[$day]['nb']++;
+				}
+				if ($obj->wind_speed !== null) {
+					$days[$day]['wind_max'] = max((float) $days[$day]['wind_max'], (float) $obj->wind_speed);
+				}
+				// Symbol of the step nearest to midday
+				$hour = (int) dol_print_date($time, '%H', 'tzuserrel');
+				if ($obj->symbol_code && abs($hour - 12) < $days[$day]['symbolhour']) {
+					$days[$day]['symbol'] = (string) $obj->symbol_code;
+					$days[$day]['symbolhour'] = abs($hour - 12);
+				}
+				if ($obj->precip !== null && isset($days[$dayprecip])) {
+					$days[$dayprecip]['precip'] = (float) $days[$dayprecip]['precip'] + (float) $obj->precip;
+				}
+			}
+			$this->db->free($resql);
+		}
+		return array_filter($days, static function (array $d): bool {
+			return $d['nb'] > 0;
+		});
+	}
+
+	/**
+	 * Icon of a symbol of MET Norway
+	 *
+	 * @param	string	$symbol		Symbol code (clearsky_day, lightrainshowers_night, ...)
+	 * @return	string				HTML
+	 */
+	public static function symbolIcon(string $symbol): string
+	{
+		if ($symbol === '') {
+			return '';
+		}
+		$base = (string) preg_replace('/_(day|night|polartwilight)$/', '', $symbol);
+		$night = (bool) preg_match('/_night$/', $symbol);
+		if (strpos($base, 'thunder') !== false) {
+			$icon = 'fa-bolt';
+		} elseif (preg_match('/snow|sleet/', $base)) {
+			$icon = 'fa-snowflake';
+		} elseif (strpos($base, 'heavyrain') !== false) {
+			$icon = 'fa-cloud-showers-heavy';
+		} elseif (strpos($base, 'rain') !== false) {
+			$icon = 'fa-cloud-rain';
+		} elseif ($base == 'fog') {
+			$icon = 'fa-smog';
+		} elseif ($base == 'cloudy') {
+			$icon = 'fa-cloud';
+		} elseif (in_array($base, array('fair', 'partlycloudy'))) {
+			$icon = ($night ? 'fa-cloud-moon' : 'fa-cloud-sun');
+		} else {
+			$icon = ($night ? 'fa-moon' : 'fa-sun');
+		}
+		return '<span class="fas '.$icon.' fa-fw" title="'.dol_escape_htmltag($symbol).'"></span>';
 	}
 
 
