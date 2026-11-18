@@ -34,6 +34,7 @@
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
+dol_include_once('/dolifarm/lib/dolifarm_help.lib.php'); // Help texts by role (doliFarm >= 1.5.9)
 
 /**
  * Weather service of doliField
@@ -432,7 +433,7 @@ class DoliFieldWeather
 
 		$key = getDolGlobalString('DOLIFIELD_CDS_API_KEY');
 		if ($key === '') {
-			$this->error = $langs->trans('WeatherCdsKeyMissing');
+			$this->error = $langs->trans((function_exists('dolifarmHelpKey') ? dolifarmHelpKey('WeatherCdsKeyMissing') : 'WeatherCdsKeyMissing'));
 			return false;
 		}
 		if (!preg_match('/^https:\/\//', $url)) {
@@ -1202,7 +1203,7 @@ class DoliFieldWeather
 		$nberror = 0;
 
 		if (getDolGlobalString('DOLIFIELD_CDS_API_KEY') === '') {
-			$this->output = $langs->trans('WeatherCdsKeyMissing');
+			$this->output = $langs->trans('WeatherCdsKeyMissingAdmin');
 			return 0;
 		}
 

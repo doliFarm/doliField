@@ -1,5 +1,11 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 0.3.1 (in sviluppo)
+
+Help per ruolo (richiede doliFarm 1.5.9 per la separazione). Dopo l'aggiornamento non serve riattivare il modulo.
+
+- Testi separati per ruolo: chiave di Copernicus mancante (agli utenti "avvisare l'amministratore"), finestra dei trattamenti nel widget (soglie solo agli amministratori), spiegazione dei punti meteo (lavoro pianificato solo agli amministratori).
+
 ## 0.3.0 (2026-11-17)
 
 Weather of the plots, phase M2 (forecasts). After the update reactivate the module (new columns, scheduled job "Weather forecasts of the plots", widget).
