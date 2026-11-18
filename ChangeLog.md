@@ -1,5 +1,11 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 0.3.4 (2026-11-18)
+
+Menu. Dopo l'aggiornamento **riattivare doliField** (menu).
+
+- Correzione: la voce "App di campo" non compariva sotto "Aiutami" (Dolibarr cerca la voce madre solo tra quelle con posizione più bassa).
+
 ## 0.3.3 (2026-11-18)
 
 Menu. Dopo l'aggiornamento **riattivare doliField** (menu); richiede doliFarm 1.5.11.
