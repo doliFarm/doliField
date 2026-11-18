@@ -55,7 +55,7 @@ class modDoliField extends DolibarrModules
 		$this->descriptionlong = "ModuleDoliFieldDesc";
 		$this->editor_name = 'doliFarm.com';
 		$this->editor_url = 'https://www.dolifarm.com';
-		$this->version = '0.3.0';
+		$this->version = '0.3.1';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		// Icon of the suite when doliFarm is installed
 		$this->picto = (function_exists('dolifarm_get_fa_icon') ? dolifarm_get_fa_icon('dolifield') : 'fa-satellite-dish');

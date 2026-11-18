@@ -1,6 +1,6 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
-## 0.3.1 (in sviluppo)
+## 0.3.1 (2026-11-18)
 
 Help per ruolo (richiede doliFarm 1.5.9 per la separazione). Dopo l'aggiornamento non serve riattivare il modulo.
 
