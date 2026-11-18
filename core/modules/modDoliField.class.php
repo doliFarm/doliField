@@ -55,7 +55,7 @@ class modDoliField extends DolibarrModules
 		$this->descriptionlong = "ModuleDoliFieldDesc";
 		$this->editor_name = 'doliFarm.com';
 		$this->editor_url = 'https://www.dolifarm.com';
-		$this->version = '0.3.3';
+		$this->version = '0.3.4';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		// Icon of the suite when doliFarm is installed
 		$this->picto = (function_exists('dolifarm_get_fa_icon') ? dolifarm_get_fa_icon('dolifield') : 'fa-satellite-dish');
@@ -227,7 +227,7 @@ class modDoliField extends DolibarrModules
 			'leftmenu' => 'dolitrace_pwa',
 			'url' => '/dolitrace/dolitrace_pwa.php',
 			'langs' => 'dolitrace@dolitrace',
-			'position' => 9002,	// One position for each module (unique key of llx_menu)
+			'position' => 9022,	// After "Help me": Dolibarr looks for the parent only among the entries with a lower position; one position for each module (unique key of llx_menu)
 			'enabled' => 'isModEnabled("dolitrace") && isModEnabled("dolifarm")',
 			'perms' => '$user->hasRight("dolitrace", "dolitracepwa", "use") || $user->hasRight("dolitrace", "dolitraceoperation", "write") || $user->hasRight("dolitrace", "dolitraceharvest", "write")',
 			'target' => '',
