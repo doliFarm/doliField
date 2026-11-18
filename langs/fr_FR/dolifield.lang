@@ -19,6 +19,7 @@
 #
 ModuleDoliFieldName = doliField
 ModuleDoliFieldDesc = Données de terrain de la suite doliFarm : capteurs, météo, satellite et caméras, liés aux parcelles, bâtiments et silos (en développement)
+DoliFieldTopMenu = Terrain
 Permission50003001 = Consulter les données de terrain
 
 #

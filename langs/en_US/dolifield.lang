@@ -18,6 +18,7 @@
 #
 ModuleDoliFieldName = doliField
 ModuleDoliFieldDesc = Field data of the doliFarm suite: sensors, weather, satellite and cameras, linked to plots, buildings and silos (in development)
+DoliFieldTopMenu = Field
 Permission50003001 = Read the field data
 
 #
