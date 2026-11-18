@@ -1,5 +1,11 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 0.3.3 (2026-11-18)
+
+Menu. Dopo l'aggiornamento **riattivare doliField** (menu); richiede doliFarm 1.5.11.
+
+- "App di campo" sotto "Aiutami", nella stessa sezione in fondo al menu a sinistra.
+
 ## 0.3.2 (2026-11-18)
 
 Menu. Dopo l'aggiornamento **riattivare doliField** (menu); richiede doliFarm 1.5.10 e, per l'app, doliTrace 1.5.5.

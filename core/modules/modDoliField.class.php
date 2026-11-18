@@ -55,7 +55,7 @@ class modDoliField extends DolibarrModules
 		$this->descriptionlong = "ModuleDoliFieldDesc";
 		$this->editor_name = 'doliFarm.com';
 		$this->editor_url = 'https://www.dolifarm.com';
-		$this->version = '0.3.2';
+		$this->version = '0.3.3';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		// Icon of the suite when doliFarm is installed
 		$this->picto = (function_exists('dolifarm_get_fa_icon') ? dolifarm_get_fa_icon('dolifield') : 'fa-satellite-dish');
@@ -200,23 +200,8 @@ class modDoliField extends DolibarrModules
 				'user' => 2,
 			);
 		}
-		// Field app (PWA) for the phone, at the bottom of the left menu of the three modules of the suite (before "Help me")
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=dolifield',
-			'type' => 'left',
-			'titre' => 'PwaTitle',
-			'prefix' => img_picto('', 'fa-mobile-alt', 'class="paddingright pictofixedwidth valignmiddle"'),
-			'mainmenu' => 'dolifield',
-			'leftmenu' => 'dolitrace_pwa',
-			'url' => '/dolitrace/dolitrace_pwa.php',
-			'langs' => 'dolitrace@dolitrace',
-			'position' => 9002,	// Bottom of the left menu, after a separator (dolifarm/css/dolifarm.css); one position for each module (unique key of llx_menu)
-			'enabled' => 'isModEnabled("dolitrace") && isModEnabled("dolifarm")',
-			'perms' => '$user->hasRight("dolitrace", "dolitracepwa", "use") || $user->hasRight("dolitrace", "dolitraceoperation", "write") || $user->hasRight("dolitrace", "dolitraceharvest", "write")',
-			'target' => '',
-			'user' => 2,
-		);
-		// "Help me" (getting started of doliFarm): last entry of the left menu of the three modules of the suite
+		// "Help me" (getting started of doliFarm): last section of the left menu of the three modules of the suite, after a
+		// separator (dolifarm/css/dolifarm.css), with the field app under it (declared after it: the parent must exist)
 		$this->menu[$r++] = array(
 			'fk_menu' => 'fk_mainmenu=dolifield',
 			'type' => 'left',
@@ -231,6 +216,22 @@ class modDoliField extends DolibarrModules
 			'perms' => '1',
 			'target' => '',
 			'user' => 0,
+		);
+		// Field app (PWA) for the phone: under "Help me", in the same section at the bottom of the left menu of the three modules
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=dolifield,fk_leftmenu=dolifarm_start',
+			'type' => 'left',
+			'titre' => 'PwaTitle',
+			'prefix' => img_picto('', 'fa-mobile-alt', 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'dolifield',
+			'leftmenu' => 'dolitrace_pwa',
+			'url' => '/dolitrace/dolitrace_pwa.php',
+			'langs' => 'dolitrace@dolitrace',
+			'position' => 9002,	// One position for each module (unique key of llx_menu)
+			'enabled' => 'isModEnabled("dolitrace") && isModEnabled("dolifarm")',
+			'perms' => '$user->hasRight("dolitrace", "dolitracepwa", "use") || $user->hasRight("dolitrace", "dolitraceoperation", "write") || $user->hasRight("dolitrace", "dolitraceharvest", "write")',
+			'target' => '',
+			'user' => 2,
 		);
 	}
 
