@@ -1,5 +1,12 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## 0.3.2 (2026-11-18)
+
+Menu. Dopo l'aggiornamento **riattivare doliField** (menu); richiede doliFarm 1.5.10 e, per l'app, doliTrace 1.5.5.
+
+- Il top menu si chiama **Campo** ed è il terzo della suite, dopo Fascicoli e QdC.
+- "App di campo" e "Aiutami" in fondo al menu a sinistra, dopo un separatore.
+
 ## 0.3.1 (2026-11-18)
 
 Help per ruolo (richiede doliFarm 1.5.9 per la separazione). Dopo l'aggiornamento non serve riattivare il modulo.

@@ -19,6 +19,7 @@
 #
 ModuleDoliFieldName = doliField
 ModuleDoliFieldDesc = Dati di campo della suite doliFarm: sensori, meteo, satellite e videocamere, collegati ad appezzamenti, fabbricati e silos (in sviluppo)
+DoliFieldTopMenu = Campo
 Permission50003001 = Consultare i dati di campo
 
 #
