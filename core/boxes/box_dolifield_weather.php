@@ -142,7 +142,7 @@ class box_dolifield_weather extends ModeleBoxes
 			$this->info_box_contents[$i][] = array('td' => 'class="nowraponall"', 'text' => $temp, 'asis' => 1);
 			$this->info_box_contents[$i][] = array('td' => 'class="right nowraponall"', 'text' => $raintext, 'asis' => 1);
 			$this->info_box_contents[$i][] = array('td' => 'class="right nowraponall"', 'text' => $windtext, 'asis' => 1);
-			$this->info_box_contents[$i][] = array('td' => 'class="right nowraponall" title="'.dol_escape_htmltag($langs->trans('WeatherWindowHelp')).'"', 'text' => $window, 'asis' => 1);
+			$this->info_box_contents[$i][] = array('td' => 'class="right nowraponall" title="'.dol_escape_htmltag($langs->trans((function_exists('dolifarmHelpKey') ? dolifarmHelpKey('WeatherWindowHelp') : 'WeatherWindowHelp'))).'"', 'text' => $window, 'asis' => 1);
 			$i++;
 		}
 		if ($i == 0) {

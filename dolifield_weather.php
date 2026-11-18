@@ -105,9 +105,9 @@ if ($permissiontowrite) {
 }
 print load_fiche_titre($title, $morehtmlright, 'fa-cloud-sun-rain');
 
-print '<p class="opacitymedium">'.$langs->trans('WeatherPointsHelp').'</p>';
+print '<p class="opacitymedium">'.$langs->trans((function_exists('dolifarmHelpKey') ? dolifarmHelpKey('WeatherPointsHelp') : 'WeatherPointsHelp')).'</p>';
 if (getDolGlobalString('DOLIFIELD_CDS_API_KEY') === '') {
-	print '<div class="warning">'.$langs->trans('WeatherCdsKeyMissing');
+	print '<div class="warning">'.$langs->trans((function_exists('dolifarmHelpKey') ? dolifarmHelpKey('WeatherCdsKeyMissing') : 'WeatherCdsKeyMissing'));
 	if ($user->admin) {
 		print ' <a href="'.dol_buildpath('/dolifield/admin/setup.php', 1).'">'.$langs->trans('Setup').'</a>';
 	}
