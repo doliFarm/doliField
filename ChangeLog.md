@@ -1,5 +1,11 @@
 # CHANGELOG MODULE DOLIFIELD FOR [DOLIBARR ERP CRM](https://www.dolibarr.org)
 
+## Non rilasciato
+
+Menu della suite. Dopo l'aggiornamento **riattivare doliField** (menu); da usare con doliFarm successivo alla 1.6.0.
+
+- Niente più top menu "Campo": le aree sono la sezione **Dati di campo** del menu a sinistra di doliFarm. "Aiutami" e "App di campo" sono dichiarati solo da doliFarm.
+
 ## 0.3.4 (2026-11-18)
 
 Menu. Dopo l'aggiornamento **riattivare doliField** (menu).

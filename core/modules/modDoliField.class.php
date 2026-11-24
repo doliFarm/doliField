@@ -159,16 +159,18 @@ class modDoliField extends DolibarrModules
 		// Menus: one entry for each area of the field data (pages still to be written open the area page; Weather has its page)
 		$this->menu = array();
 		$r = 0;
+		// No top menu: the areas are a section of the left menu of the only top menu of the suite, "dolifarm" (doliField
+		// depends on doliFarm), after the Farm dossier (1100+) and the Field notebook of doliTrace (2000+)
 		$this->menu[$r++] = array(
-			'fk_menu' => '',
-			'type' => 'top',
-			'titre' => 'DoliFieldTopMenu',
-			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle"'),
-			'mainmenu' => 'dolifield',
-			'leftmenu' => '',
+			'fk_menu' => 'fk_mainmenu=dolifarm',	// Head of the section "Field data"
+			'type' => 'left',
+			'titre' => 'DoliFieldArea',
+			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'dolifarm',
+			'leftmenu' => 'dolifield',
 			'url' => '/dolifield/dolifieldindex.php',
 			'langs' => 'dolifield@dolifield',
-			'position' => 1003,	// Top menu of the suite: Farm dossiers (1001), Field notebook of doliTrace (1002), Field (1003)
+			'position' => 3000 + $r,
 			'enabled' => "isModEnabled('dolifield')",
 			'perms' => '$user->hasRight("dolifield", "read")',
 			'target' => '',
@@ -185,54 +187,21 @@ class modDoliField extends DolibarrModules
 		);
 		foreach ($areas as $code => $title) {
 			$this->menu[$r++] = array(
-				'fk_menu' => 'fk_mainmenu=dolifield',
+				'fk_menu' => 'fk_mainmenu=dolifarm,fk_leftmenu=dolifield',
 				'type' => 'left',
 				'titre' => $title,
-				'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
-				'mainmenu' => 'dolifield',
+				'mainmenu' => 'dolifarm',
 				'leftmenu' => 'dolifield_'.$code,
 				'url' => ($code == 'weather' ? '/dolifield/dolifield_weather.php' : '/dolifield/dolifieldindex.php'),
 				'langs' => 'dolifield@dolifield',
-				'position' => 1000 + $r,
+				'position' => 3000 + $r,
 				'enabled' => "isModEnabled('dolifield')",
 				'perms' => '$user->hasRight("dolifield", "read")',
 				'target' => '',
 				'user' => 2,
 			);
 		}
-		// "Help me" (getting started of doliFarm): last section of the left menu of the three modules of the suite, after a
-		// separator (dolifarm/css/dolifarm.css), with the field app under it (declared after it: the parent must exist)
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=dolifield',
-			'type' => 'left',
-			'titre' => 'StartTitle',
-			'prefix' => img_picto('', 'fa-question-circle', 'class="paddingright pictofixedwidth valignmiddle"'),
-			'mainmenu' => 'dolifield',
-			'leftmenu' => 'dolifarm_start',
-			'url' => '/dolifarm/dolifarm_start.php',
-			'langs' => 'dolifarm@dolifarm',
-			'position' => 9012,	// Last entry of the left menu; one position for each module (unique key of llx_menu)
-			'enabled' => 'isModEnabled("dolifarm")',
-			'perms' => '1',
-			'target' => '',
-			'user' => 0,
-		);
-		// Field app (PWA) for the phone: under "Help me", in the same section at the bottom of the left menu of the three modules
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=dolifield,fk_leftmenu=dolifarm_start',
-			'type' => 'left',
-			'titre' => 'PwaTitle',
-			'prefix' => img_picto('', 'fa-mobile-alt', 'class="paddingright pictofixedwidth valignmiddle"'),
-			'mainmenu' => 'dolifield',
-			'leftmenu' => 'dolitrace_pwa',
-			'url' => '/dolitrace/dolitrace_pwa.php',
-			'langs' => 'dolitrace@dolitrace',
-			'position' => 9022,	// After "Help me": Dolibarr looks for the parent only among the entries with a lower position; one position for each module (unique key of llx_menu)
-			'enabled' => 'isModEnabled("dolitrace") && isModEnabled("dolifarm")',
-			'perms' => '$user->hasRight("dolitrace", "dolitracepwa", "use") || $user->hasRight("dolitrace", "dolitraceoperation", "write") || $user->hasRight("dolitrace", "dolitraceharvest", "write")',
-			'target' => '',
-			'user' => 2,
-		);
+		// "Help me" and the field app: declared by doliFarm at the bottom of the left menu of the suite
 	}
 
 	/**
